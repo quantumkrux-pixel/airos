@@ -1,0 +1,423 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, X, ChevronRight } from 'lucide-react';
+import { getCategorizedApps } from '../../utils/appRegistry';
+
+const AppMenu = ({ isOpen, onClose, onLaunchApp, onOpenSettings }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const menuRef = useRef(null);
+
+  const categorizedApps = getCategorizedApps();
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose]);
+
+  const handleAppClick = (appKey) => {
+    onLaunchApp(appKey);
+    onClose();
+    setSearchTerm('');
+    setSelectedCategory(null);
+  };
+
+  const handleBackToCategories = () => {
+    setSelectedCategory(null);
+  };
+
+  // Filter apps based on search
+  const getFilteredApps = () => {
+    if (!searchTerm) return null;
+
+    const allApps = [];
+    Object.values(categorizedApps).forEach(category => {
+      category.apps.forEach(app => {
+        if (app.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+          allApps.push(app);
+        }
+      });
+    });
+    return allApps;
+  };
+
+  const filteredApps = getFilteredApps();
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      ref={menuRef}
+      style={{
+        position: 'fixed',
+        bottom: '60px',
+        left: '16px',
+        width: '400px',
+        maxHeight: '600px',
+        background: 'transparent',
+        backdropFilter: 'blur(20px)',
+        borderRadius: '12px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: 1000,
+        animation: 'slideUp 0.2s ease-out'
+      }}
+    >
+      {/* Header with Search */}
+      <div
+        style={{
+          padding: '16px',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          background: 'transparent',
+          backdropFilter: 'blur(22px) saturate(150%)'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '12px'
+          }}
+        >
+          <h2
+            style={{
+              color: 'white',
+              fontSize: '18px',
+              fontWeight: '600',
+              margin: 0
+            }}
+          >
+            {selectedCategory ? categorizedApps[selectedCategory].name : 'Applications'}
+          </h2>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <X size={20} color="white" />
+          </button>
+        </div>
+
+        {/* Search Input */}
+        <div style={{ position: 'relative' }}>
+          <Search
+            size={18}
+            color="#ffffff"
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)'
+            }}
+          />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search apps..."
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '10px 12px 10px 40px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '14px',
+              outline: 'none',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Content */}
+      <div
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: '16px'
+        }}
+      >
+        {/* Search results */}
+        {searchTerm && filteredApps ? (
+          filteredApps.length > 0 ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '12px'
+              }}
+            >
+              {filteredApps.map((app) => (
+                <button
+                  key={app.key}
+                  onClick={() => handleAppClick(app.key)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '16px 8px',
+                    background: 'transparent',
+                    backdropFilter: 'blur(22px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    color: 'white'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.51)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  <app.icon size={32} color="white" />
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      textAlign: 'center',
+                      fontWeight: '500'
+                    }}
+                  >
+                    {app.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '32px',
+                color: '#9ca3af'
+              }}
+            >
+              No apps found matching "{searchTerm}"
+            </div>
+          )
+        ) : selectedCategory ? (
+          <>
+            <button
+              onClick={handleBackToCategories}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                background: 'transparent',
+                backdropFilter: 'blur(26px) saturate(150%)',
+                borderRadius: '8px',
+                color: '#9ca3af',
+                cursor: 'pointer',
+                marginBottom: '16px',
+                fontSize: '14px'
+              }}
+            >
+              ← Back to categories
+            </button>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '12px'
+              }}
+            >
+              {categorizedApps[selectedCategory].apps.map((app) => (
+                <button
+                  key={app.key}
+                  onClick={() => handleAppClick(app.key)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '16px 8px',
+                    background: 'transparent',
+                    backdropFilter: 'blur(22px)',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    color: 'white'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.73)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.41)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  <app.icon size={32} color="white" />
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      textAlign: 'center',
+                      fontWeight: '500'
+                    }}
+                  >
+                    {app.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Categories */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}
+            >
+              {Object.entries(categorizedApps).map(([key, category]) => (
+                <button
+                  key={key}
+                  onClick={() => setSelectedCategory(key)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px',
+                    background: 'rgba(156, 160, 156, 0.57)',
+                    backdropFilter: 'blur(22px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    color: 'white'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(156, 160, 156, 0.87)';
+                    e.currentTarget.style.transform = 'translateX(4px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(156, 160, 156, 0.57)';
+                    e.currentTarget.style.transform = 'translateX(0)';
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '28px' }}>{category.icon}</span>
+
+                    <div style={{ textAlign: 'left' }}>
+                      <div
+                        style={{
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          marginBottom: '2px'
+                        }}
+                      >
+                        {category.name}
+                      </div>
+
+                      <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                        {category.apps.length} apps
+                      </div>
+                    </div>
+                  </div>
+
+                  <ChevronRight size={20} color="#9ca3af" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          padding: '12px 16px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+          display: 'flex',
+          gap: '8px'
+        }}
+      >
+        <button
+          onClick={() => {
+            onOpenSettings();
+            onClose();
+          }}
+          style={{
+            flex: 1,
+            padding: '8px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: '6px',
+            color: '#ffffff',
+            fontSize: '12px',
+            cursor: 'pointer',
+            fontWeight: '500',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          Settings
+        </button>
+
+        <button
+          style={{
+            flex: 1,
+            padding: '8px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(168, 85, 247, 0.3)',
+            borderRadius: '6px',
+            color: '#ffffff',
+            fontSize: '12px',
+            cursor: 'pointer',
+            fontWeight: '500',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          About
+        </button>
+      </div>
+
+      <style>
+        {`
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+        `}
+      </style>
+    </div>
+  );
+};
+
+export default AppMenu;

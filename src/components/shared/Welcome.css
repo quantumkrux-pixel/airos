@@ -1,0 +1,47 @@
+.airos-container {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.welcome-layer {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+/* Abstract swirling background using gradient animation */
+.abstract-bg {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at center,
+    #ff6ec4, #7873f5, #4ade80, #facc15);
+  animation: swirl 10s infinite linear;
+  filter: blur(80px);
+}
+
+@keyframes swirl {
+  0% { transform: rotate(0deg) translate(-25%, -25%); }
+  50% { transform: rotate(180deg) translate(25%, 25%); }
+  100% { transform: rotate(360deg) translate(-25%, -25%); }
+}
+
+.welcome-text {
+  position: relative;
+  color: white;
+  font-size: 2.5rem;
+  font-weight: 600;
+  opacity: 0;
+  animation: fadeIn 2s forwards 1s;
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
