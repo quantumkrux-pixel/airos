@@ -1,23 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, User, LogOut } from 'lucide-react';
+import { Menu, User, MessageSquare, LogOut } from 'lucide-react';
 import { appRegistry } from '../../utils/appRegistry';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import AOSLogo from './AOSLogo.png';
 
-const Taskbar = ({ 
-  windows, 
-  activeWindow, 
-  currentUser, 
+const Taskbar = ({
+  windows,
+  activeWindow,
+  currentUser,
   onRestoreWindow,
   onToggleAppMenu,
-  onLogout 
+  onLogout,
+  onLaunchApp,
+  AppWindow
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const isMobile = useIsMobile();
 
-  // -----------------------------
-  // Frosted Glass Styles
-  // -----------------------------
   const containerStyle = isMobile
     ? {
         position: 'absolute',
@@ -122,15 +121,33 @@ const Taskbar = ({
         </div>
       )}
 
-      {/* Right: User Info & Logout */}
+      {/* Right: User Info, AirChat, Logout */}
       {!isMobile && (
-        <div style={{ display: 'flex', alignItems: 'relative', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+          <button
+            onClick={() => onLaunchApp('chat')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              background: 'rgba(100, 100, 70, 0.8)',
+              color: 'white',
+              borderRadius: '6px',
+              fontSize: '16px',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}>
+           <MessageSquare size={24} color="white" />
+          </button>
+
           <div
             style={{
               color: 'white',
               fontSize: '16px',
               display: 'flex',
-              alignItems: 'right',
+              alignItems: 'center',
               gap: '8px',
               padding: '6px 12px',
               background: 'rgba(255, 255, 255, 0.1)',
@@ -144,8 +161,8 @@ const Taskbar = ({
           <button
             onClick={onLogout}
             style={{
-              display: 'absolute',
-              alignItems: 'right',
+              display: 'flex',
+              alignItems: 'center',
               gap: '8px',
               padding: '6px 12px',
               background: 'rgba(100, 100, 70, 0.8)',

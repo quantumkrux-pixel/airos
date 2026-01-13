@@ -200,17 +200,17 @@ const AirChat = ({ currentUser }) => {
       style={{
         display: 'flex',
         height: '100%',
-        background: '#050509',
+        background: '#303047a8',
         color: '#e5e7eb',
         fontFamily: 'system-ui, -apple-system, sans-serif',
-        fontSize: '13px'
+        fontSize: '18px'
       }}
     >
       {/* SIDEBAR */}
       <div
         style={{
-          width: 260,
-          borderRight: '1px solid #1f2933',
+          width: 220,
+          borderRight: '2px double #1f2933',
           display: 'flex',
           flexDirection: 'column'
         }}
@@ -218,7 +218,7 @@ const AirChat = ({ currentUser }) => {
         {/* Header */}
         <div
           style={{
-            padding: '10px 12px',
+            padding: '6px 8px',
             borderBottom: '1px solid #1f2933',
             fontWeight: 600,
             fontSize: '14px'
@@ -232,7 +232,6 @@ const AirChat = ({ currentUser }) => {
           onSubmit={handleSearch}
           style={{
             padding: '8px 12px',
-            borderBottom: '1px solid #111827'
           }}
         >
           <div
@@ -472,7 +471,7 @@ const AirChat = ({ currentUser }) => {
       <div
         style={{
           flex: 1,
-          display: 'flex',
+          display: 'fill',
           flexDirection: 'column'
         }}
       >
