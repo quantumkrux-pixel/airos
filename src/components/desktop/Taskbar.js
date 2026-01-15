@@ -121,7 +121,7 @@ const Taskbar = ({
         </div>
       )}
 
-      {/* Right: User Info, AirChat, Logout */}
+      {/* Right: User Info, Calender, AirChat, Logout */}
       {!isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
           <button
@@ -141,7 +141,25 @@ const Taskbar = ({
             }}>
            <MessageSquare size={24} color="white" />
           </button>
-
+    {!isMobile && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+          <button
+            onClick={() => onLaunchApp('calender')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              background: 'rgba(100, 100, 70, 0.8)',
+              color: 'white',
+              borderRadius: '6px',
+              fontSize: '16px',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}>
+           <Calender size={24} color="white" />
+          </button>
           <div
             style={{
               color: 'white',
