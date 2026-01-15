@@ -64,14 +64,14 @@ export const appRegistry = {
   video: {
     Component: MediaPlayer,
     icon: Play,
-    title: 'AirStream Media Player',
+    title: 'Media Player',
     name: 'Airstream Player'
   },
   browser: {
     Component: BrowserApp,
     icon: Globe,
-    title: 'KruxBrowser',
-    name: 'KruxBrowser'
+    title: 'Browse',
+    name: 'Browse'
   },
   calendar: {
     Component: Calendar,
@@ -91,7 +91,7 @@ export const appCategories = {
   productivity: {
     name: 'Productivity',
     icon: '💼',
-    apps: ['text', 'files', 'fileswap', 'calendar', 'terminal', 'chat']
+    apps: ['text', 'files', 'fileswap', 'calendar', 'chat']
   },
   creativity: {
     name: 'Creativity',
@@ -127,11 +127,10 @@ export const getCategorizedApps = () => {
 };
 
 export const desktopApps = [
-  { name: 'Sketchy', icon: Palette, app: 'canvas' },
   { name: 'File Manager', icon: Folder, app: 'files' },
-  { name: 'AirChat', icon: MessageSquare, app: 'chat' },
   { name: 'KruxBrowser', icon: Globe, app: 'browser' },
   { name: 'Terminal', icon: TerminalIcon, app: 'terminal' },
   { name: 'Codex', icon: Code2, app: 'code' },
-  { name: 'AnySwap', icon: RefreshCw, app: 'fileswap' }
+  { name: 'AnySwap', icon: RefreshCw, app: 'fileswap' },
+  { name: 'Sketchy', icon: Palette, app: 'canvas' }
 ];
