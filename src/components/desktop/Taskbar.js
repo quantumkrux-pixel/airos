@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Menu, User, MessageSquare, Calender, LogOut } from 'lucide-react';
+import React, { useState } from 'react';
+import { Menu, User, MessageSquare, Calendar, LogOut } from 'lucide-react';
 import { appRegistry } from '../../utils/appRegistry';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import AOSLogo from './AOSLogo.png';
@@ -12,7 +12,6 @@ const Taskbar = ({
   onToggleAppMenu,
   onLogout,
   onLaunchApp,
-  AppWindow
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const isMobile = useIsMobile();
@@ -35,7 +34,7 @@ const Taskbar = ({
         alignItems: 'center',
         justifyContent: 'space-around',
         padding: '0 12px',
-        zIndex: 9999
+        zIndex: 9999,
       }
     : {
         height: '52px',
@@ -49,7 +48,7 @@ const Taskbar = ({
         alignItems: 'center',
         padding: '0 12px',
         gap: '8px',
-        zIndex: 9999
+        zIndex: 9999,
       };
 
   const iconButton = {
@@ -59,7 +58,7 @@ const Taskbar = ({
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    transition: 'all 0.2s'
+    transition: 'all 0.2s',
   };
 
   const mobileIcon = {
@@ -70,7 +69,7 @@ const Taskbar = ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'pointer'
+    cursor: 'pointer',
   };
 
   return (
@@ -83,7 +82,7 @@ const Taskbar = ({
           style={{
             width: isMobile ? 40 : 64,
             height: isMobile ? 40 : 64,
-            imageRendering: 'crisp-edges'
+            imageRendering: 'crisp-edges',
           }}
         />
       </button>
@@ -91,7 +90,7 @@ const Taskbar = ({
       {/* Open Windows (hidden on mobile) */}
       {!isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 1 auto' }}>
-          {windows.filter(w => !w.minimized).map((win) => {
+          {windows.filter((w) => !w.minimized).map((win) => {
             const IconComponent = appRegistry[win.app]?.icon;
             return (
               <button
@@ -103,14 +102,15 @@ const Taskbar = ({
                   gap: '8px',
                   padding: '4px 12px',
                   borderRadius: '4px',
-                  background: activeWindow === win.id ? 'rgba(59,130,246,0.8)' : 'rgba(55,65,81,0.6)',
+                  background:
+                    activeWindow === win.id ? 'rgba(59,130,246,0.8)' : 'rgba(55,65,81,0.6)',
                   color: activeWindow === win.id ? 'white' : '#d1d5db',
                   border: 'none',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
                   maxWidth: '200px',
                   overflow: 'hidden',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {IconComponent && <IconComponent size={16} />}
@@ -121,7 +121,7 @@ const Taskbar = ({
         </div>
       )}
 
-      {/* Right: User Info, Calender, AirChat, Logout */}
+      {/* Right: User Info, Calendar, AirChat, Logout */}
       {!isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
           <button
@@ -137,14 +137,14 @@ const Taskbar = ({
               fontSize: '16px',
               border: 'none',
               cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}>
-           <MessageSquare size={24} color="white" />
+              transition: 'all 0.2s',
+            }}
+          >
+            <MessageSquare size={24} color="white" />
           </button>
-    {!isMobile && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+
           <button
-            onClick={() => onLaunchApp('calender')}
+            onClick={() => onLaunchApp('calendar')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -156,10 +156,12 @@ const Taskbar = ({
               fontSize: '16px',
               border: 'none',
               cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}>
-           <Calender size={24} color="white" />
+              transition: 'all 0.2s',
+            }}
+          >
+            <Calendar size={24} color="white" />
           </button>
+
           <div
             style={{
               color: 'white',
@@ -169,7 +171,7 @@ const Taskbar = ({
               gap: '8px',
               padding: '6px 12px',
               background: 'rgba(255, 255, 255, 0.1)',
-              borderRadius: '6px'
+              borderRadius: '6px',
             }}
           >
             <User size={16} />
@@ -189,7 +191,7 @@ const Taskbar = ({
               fontSize: '16px',
               border: 'none',
               cursor: 'pointer',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
             }}
           >
             <LogOut size={18} />
@@ -205,8 +207,7 @@ const Taskbar = ({
         </div>
       )}
     </div>
-  )};
-
+  );
 };
 
 export default Taskbar;
