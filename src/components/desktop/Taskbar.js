@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, User, MessageSquare, LogOut } from 'lucide-react';
+import { Menu, User, MessageSquare, Calender, LogOut } from 'lucide-react';
 import { appRegistry } from '../../utils/appRegistry';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import AOSLogo from './AOSLogo.png';
