@@ -1,17 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal as TerminalIcon, Lock, Edit3, Save, X } from 'lucide-react';
+import { Terminal as TerminalIcon, Lock, Edit3 } from 'lucide-react';
 
 const Terminal = ({
-  fileSystem = {},
-  saveFile = () => {},
-  createDirectory = () => {},
-  deleteFile = () => {},
+  fileSystem, 
+  saveFile, 
+  createDirectory, 
+  deleteFile,
   currentUser,
-  onOpenFile = () => {},
-  reloadFileSystem = () => {},
-  updateTheme = () => {},
-  updateDesktopLayout = () => {}
+  onOpenFile,
+  reloadFileSystem,
+  updateTheme,
+  updateDesktopLayout
 }) => {
+
   const [history, setHistory] = useState([
     { type: 'system', content: 'Welcome to AirOS Terminal v2.0' },
     { type: 'system', content: 'Type "help" for available commands' }
@@ -23,13 +24,11 @@ const Terminal = ({
   const [sudoMode, setSudoMode] = useState(false);
   const [awaitingPassword, setAwaitingPassword] = useState(false);
   const [pendingCommand, setPendingCommand] = useState(null);
-  const [passwordAttempts, setPasswordAttempts] = useState(0);
 
   // Breeze editor state
   const [editorMode, setEditorMode] = useState(false);
   const [editorFile, setEditorFile] = useState(null);
   const [editorContent, setEditorContent] = useState('');
-  const [editorCursorLine, setEditorCursorLine] = useState(0);
   const [editorModified, setEditorModified] = useState(false);
 
   const inputRef = useRef(null);
@@ -115,7 +114,6 @@ const Terminal = ({
 
     setEditorFile(filePath);
     setEditorContent(content);
-    setEditorCursorLine(0);
     setEditorModified(false);
     setEditorMode(true);
   };
@@ -125,6 +123,9 @@ const Terminal = ({
       await saveFile(editorFile, editorContent, 'file');
       setEditorModified(false);
       addToHistory('system', `Saved ${editorFile}`);
+      if (typeof reloadFileSystem === 'function') {
+        await reloadFileSystem();
+      }
     }
   };
 
@@ -141,15 +142,14 @@ const Terminal = ({
   // Enhanced tab completion
   const handleTabCompletion = () => {
     const parts = currentInput.split(' ');
-    const commandPart = parts[0];
     const lastPart = parts[parts.length - 1];
 
-    // Command completion
+    // Command completion (if first word)
     if (parts.length === 1) {
       const commands = [
         'ls', 'cd', 'pwd', 'cat', 'mkdir', 'touch', 'rm', 'mv', 'cp',
         'echo', 'open', 'tree', 'find', 'grep', 'whoami', 'date', 'calc',
-        'clear', 'help', 'sudo', 'breeze', 'npm', 'kill', 'wc', 'theme', 'layout'
+        'clear', 'help', 'sudo', 'breeze', 'theme', 'layout'
       ];
       const matches = commands.filter(cmd => cmd.startsWith(lastPart));
       
@@ -180,7 +180,9 @@ const Terminal = ({
       if (matches.length === 1) {
         const fullPath = searchDir === '/' ? `/${matches[0]}` : `${searchDir}/${matches[0]}`;
         const isDir = fileSystem[fullPath]?.type === 'directory';
-        parts[parts.length - 1] = pathPart + matches[0] + (isDir ? '/' : '');
+        const needsQuotes = matches[0].includes(' ');
+        const completedName = needsQuotes ? `"${matches[0]}"` : matches[0];
+        parts[parts.length - 1] = pathPart + completedName + (isDir ? '/' : '');
         setCurrentInput(parts.join(' '));
       } else if (matches.length > 1) {
         addToHistory('output', matches.join('  '));
@@ -188,40 +190,103 @@ const Terminal = ({
     }
   };
 
+  // Smart argument parser that handles quotes for spaces in filenames
+  const parseArgs = (cmdString) => {
+    const args = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = null;
+
+    for (let i = 0; i < cmdString.length; i++) {
+      const char = cmdString[i];
+      
+      if ((char === '"' || char === "'") && !inQuotes) {
+        inQuotes = true;
+        quoteChar = char;
+      } else if (char === quoteChar && inQuotes) {
+        inQuotes = false;
+        quoteChar = null;
+      } else if (char === ' ' && !inQuotes) {
+        if (current) {
+          args.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current) {
+      args.push(current);
+    }
+    
+    return args;
+  };
+
   const executeCommandInternal = async (cmd) => {
-    const parts = cmd.split(' ');
+    const parts = parseArgs(cmd);
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    // Check for app init commands
-    const appInitPattern = /^(\w+)\s+init$/i;
-    const initMatch = cmd.match(appInitPattern);
-    if (initMatch) {
-      const appName = initMatch[1].toLowerCase();
-      const validApps = ['react', 'vue', 'svelte', 'node', 'express', 'vite', 'next'];
+    // Check if this is an app open command (case-insensitive app name)
+    if (args.length === 0 && command !== 'help' && command !== 'clear' && 
+        command !== 'pwd' && command !== 'whoami' && command !== 'date' && 
+        command !== 'tree' && command !== 'ls' && command !== 'cd') {
+      
+      // List of valid terminal commands to avoid treating as apps
+      const terminalCommands = ['cat', 'mkdir', 'touch', 'rm', 'mv', 'cp', 
+                                'echo', 'find', 'grep', 'breeze', 'theme', 
+                                'layout', 'sudo', 'calc', 'open'];
+      
+      if (!terminalCommands.includes(command)) {
+        // Try to open as an app
+        if (typeof onOpenFile === 'function') {
+          const appName = command.charAt(0).toUpperCase() + command.slice(1).toLowerCase();
+          addToHistory('system', `Opening ${appName}...`);
+          onOpenFile(appName, null);
+          return;
+        }
+      }
+    }
+
+    // Check for app init commands (e.g., "react init", "vue init")
+    if (args.length === 1 && args[0].toLowerCase() === 'init') {
+      const appName = command;
+      const validApps = ['react', 'vue', 'svelte', 'node', 'express', 'vite', 'next', 'angular'];
       
       if (validApps.includes(appName)) {
         addToHistory('system', `Initializing ${appName} project...`);
-        addToHistory('output', `Creating ${appName} project structure in ${currentDirectory}`);
         
-        // Create basic project structure
-        const projectDir = currentDirectory === '/' 
-          ? `/${appName}-project`
-          : `${currentDirectory}/${appName}-project`;
-        
-        await createDirectory(currentDirectory, `${appName}-project`);
-        await createDirectory(projectDir, 'src');
-        await saveFile(`${projectDir}/package.json`, 
-          JSON.stringify({ name: `${appName}-project`, version: '1.0.0' }, null, 2),
-          'file'
-        );
-        await saveFile(`${projectDir}/README.md`, `# ${appName} Project\n\nInitialized with AirOS Terminal`, 'file');
-        
-        addToHistory('system', `✓ ${appName} project initialized successfully`);
-        reloadFileSystem?.();
-        return;
-      } else {
-        addToHistory('error', `${appName}: unknown application. Try: react, vue, svelte, node, express, vite, next`);
+        try {
+          const projectDir = currentDirectory === '/' 
+            ? `/${appName}-project`
+            : `${currentDirectory}/${appName}-project`;
+          
+          const parentDir = currentDirectory;
+          const projectName = `${appName}-project`;
+          await createDirectory(parentDir, projectName);
+          await createDirectory(projectDir, 'src');
+          
+          const packageJson = {
+            name: `${appName}-project`,
+            version: '1.0.0',
+            description: `A ${appName} project initialized with AirOS Terminal`,
+            main: 'index.js'
+          };
+          await saveFile(`${projectDir}/package.json`, JSON.stringify(packageJson, null, 2), 'file');
+          
+          const readme = `# ${appName.charAt(0).toUpperCase() + appName.slice(1)} Project\n\nInitialized with AirOS Terminal\n\n## Getting Started\n\nYour ${appName} project is ready!`;
+          await saveFile(`${projectDir}/README.md`, readme, 'file');
+          
+          addToHistory('system', `✓ ${appName} project created at ${projectDir}`);
+          addToHistory('output', `  📁 ${projectName}/\n  📁 src/\n  📄 package.json\n  📄 README.md`);
+          
+          if (typeof reloadFileSystem === 'function') {
+            await reloadFileSystem();
+          }
+        } catch (error) {
+          addToHistory('error', `Failed to initialize ${appName} project: ${error.message}`);
+        }
         return;
       }
     }
@@ -233,12 +298,28 @@ const Terminal = ({
         } else {
           const filePath = resolvePath(args[0]);
           
-          // Create file if it doesn't exist
           if (!fileSystem[filePath]) {
-            await saveFile(filePath, '', 'file');
-            reloadFileSystem?.();
-            // Wait a bit for fileSystem to update
-            setTimeout(() => openBreezeEditor(filePath), 100);
+            try {
+              await saveFile(filePath, '', 'file');
+              addToHistory('system', `Created new file: ${filePath}`);
+              
+              if (typeof reloadFileSystem === 'function') {
+                await reloadFileSystem();
+              }
+              
+              setTimeout(() => {
+                if (fileSystem[filePath]) {
+                  openBreezeEditor(filePath);
+                } else {
+                  setEditorFile(filePath);
+                  setEditorContent('');
+                  setEditorModified(false);
+                  setEditorMode(true);
+                }
+              }, 200);
+            } catch (error) {
+              addToHistory('error', `breeze: failed to create file: ${error.message}`);
+            }
           } else {
             openBreezeEditor(filePath);
           }
@@ -253,8 +334,12 @@ const Terminal = ({
         } else {
           const themes = ['default', 'sunset', 'scorpio', 'dragonfruit', 'ocean', 'volcanic', 'lavender'];
           if (themes.includes(args[0])) {
-            updateTheme(args[0]);
-            addToHistory('system', `Theme changed to: ${args[0]}`);
+            if (typeof updateTheme === 'function') {
+              updateTheme(args[0]);
+              addToHistory('system', `Theme changed to: ${args[0]}`);
+            } else {
+              addToHistory('error', 'theme: updateTheme function not available');
+            }
           } else {
             addToHistory('error', `theme: unknown theme '${args[0]}'`);
           }
@@ -268,8 +353,12 @@ const Terminal = ({
           addToHistory('error', 'layout: missing layout type. Available: wheel, grid');
         } else {
           if (args[0] === 'wheel' || args[0] === 'grid') {
-            updateDesktopLayout(args[0]);
-            addToHistory('system', `Desktop layout changed to: ${args[0]}`);
+            if (typeof updateDesktopLayout === 'function') {
+              updateDesktopLayout(args[0]);
+              addToHistory('system', `Desktop layout changed to: ${args[0]}`);
+            } else {
+              addToHistory('error', 'layout: updateDesktopLayout function not available');
+            }
           } else {
             addToHistory('error', `layout: unknown layout '${args[0]}'`);
           }
@@ -291,7 +380,9 @@ const Terminal = ({
             await copyFile(srcPath, destPath);
             await deleteFile(srcPath);
             addToHistory('output', '');
-            reloadFileSystem?.();
+            if (typeof reloadFileSystem === 'function') {
+              await reloadFileSystem();
+            }
           }
         }
         break;
@@ -310,7 +401,9 @@ const Terminal = ({
           } else {
             await copyFile(srcPath, destPath);
             addToHistory('output', '');
-            reloadFileSystem?.();
+            if (typeof reloadFileSystem === 'function') {
+              await reloadFileSystem();
+            }
           }
         }
         break;
@@ -459,7 +552,9 @@ const Terminal = ({
             const name = mkdirPath.substring(mkdirPath.lastIndexOf('/') + 1);
             await createDirectory(parent, name);
             addToHistory('output', '');
-            reloadFileSystem?.();
+            if (typeof reloadFileSystem === 'function') {
+              await reloadFileSystem();
+            }
           }
         }
         break;
@@ -474,7 +569,9 @@ const Terminal = ({
           } else {
             await saveFile(touchPath, '', 'file');
             addToHistory('output', '');
-            reloadFileSystem?.();
+            if (typeof reloadFileSystem === 'function') {
+              await reloadFileSystem();
+            }
           }
         }
         break;
@@ -489,7 +586,9 @@ const Terminal = ({
           } else {
             await deleteFile(rmPath);
             addToHistory('output', '');
-            reloadFileSystem?.();
+            if (typeof reloadFileSystem === 'function') {
+              await reloadFileSystem();
+            }
           }
         }
         break;
@@ -508,8 +607,12 @@ const Terminal = ({
           } else if (fileSystem[openPath].type === 'directory') {
             addToHistory('error', `open: ${args[0]}: Is a directory`);
           } else {
-            onOpenFile(args[0], openPath);
-            addToHistory('output', `Opening ${args[0]}...`);
+            if (typeof onOpenFile === 'function') {
+              onOpenFile(args[0], openPath);
+              addToHistory('output', `Opening ${args[0]}...`);
+            } else {
+              addToHistory('error', 'open: onOpenFile function not available');
+            }
           }
         }
         break;
@@ -589,14 +692,15 @@ File Operations:
   
 Editing:
   breeze <file>        - Open file in Breeze text editor
-  open <file>          - Open file in app
+  open <file>          - Open file in external app
   
-App Initialization:
-  <appname> init       - Initialize app project (react, vue, svelte, node, etc.)
+App Management:
+  <appname>            - Open app (e.g., calculator, notes)
+  <app> init           - Initialize project (react, vue, svelte, etc.)
   
 Utilities:
   echo <text>          - Print text to terminal
-  calc <expression>    - Calculate math
+  calc <expression>    - Calculate math expression
   whoami               - Display current user
   date                 - Display date and time
   clear                - Clear the terminal
@@ -606,7 +710,13 @@ System Administration:
   sudo su              - Enter persistent sudo mode
   exit su              - Exit persistent sudo mode
   theme <name>         - Change desktop theme (requires sudo)
-  layout <type>        - Change desktop layout (requires sudo)`);
+  layout <type>        - Change desktop layout (requires sudo)
+  
+Tips:
+  - Use quotes for filenames with spaces: cat "my file.txt"
+  - Press Tab to autocomplete commands and filenames
+  - Use Ctrl+L to clear the screen
+  - Use ↑/↓ arrows to navigate command history`);
         break;
 
       default:
@@ -622,7 +732,7 @@ System Administration:
     setHistoryIndex(-1);
     addToHistory('command', `${getPrompt()} ${trimmedCmd}`);
 
-    const parts = trimmedCmd.split(' ');
+    const parts = parseArgs(trimmedCmd);
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
 
@@ -631,7 +741,12 @@ System Administration:
         addToHistory('error', 'sudo: missing command. Usage: sudo <command> or sudo su');
         return;
       }
-      setPendingCommand(args.join(' '));
+      const sudoCommand = args.join(' ');
+      if (sudoCommand === 'su') {
+        setPendingCommand('sudo su');
+      } else {
+        setPendingCommand(sudoCommand);
+      }
       setAwaitingPassword(true);
       addToHistory('command', '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':');
       return;
@@ -647,23 +762,29 @@ System Administration:
     setCurrentInput('');
   };
 
+  const handlePasswordSubmit = () => {
+    if (currentInput) {
+      setAwaitingPassword(false);
+      
+      if (pendingCommand === 'sudo su') {
+        setSudoMode(true);
+        addToHistory('system', 'Elevated privileges granted. Type "exit su" to exit sudo mode.');
+      } else if (pendingCommand) {
+        const tempSudo = sudoMode;
+        setSudoMode(true);
+        executeCommandInternal(pendingCommand);
+        setSudoMode(tempSudo);
+      }
+      
+      setPendingCommand(null);
+    }
+    setCurrentInput('');
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       if (awaitingPassword) {
-        // Simplified password handling - just accept any non-empty input
-        if (currentInput) {
-          setAwaitingPassword(false);
-          if (pendingCommand === 'su') {
-            setSudoMode(true);
-            addToHistory('system', 'Elevated privileges granted. Type "exit su" to exit sudo mode.');
-          } else if (pendingCommand) {
-            setSudoMode(true);
-            executeCommandInternal(pendingCommand);
-            setSudoMode(false);
-          }
-          setPendingCommand(null);
-        }
-        setCurrentInput('');
+        handlePasswordSubmit();
       } else {
         executeCommand(currentInput);
       }
@@ -713,21 +834,24 @@ System Administration:
       saveBreezeFile();
     } else if (e.ctrlKey && e.key === 'x') {
       e.preventDefault();
-      closeBreezeEditor(editorModified);
+      if (editorModified) {
+        const shouldSave = window.confirm('Save changes before closing?');
+        closeBreezeEditor(shouldSave);
+      } else {
+        closeBreezeEditor(false);
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       if (editorModified) {
-        if (window.confirm('Save changes before closing?')) {
-          closeBreezeEditor(true);
-        } else {
-          closeBreezeEditor(false);
-        }
+        const shouldSave = window.confirm('Save changes before closing?');
+        closeBreezeEditor(shouldSave);
       } else {
         closeBreezeEditor(false);
       }
     }
   };
 
+  // Breeze Editor View
   if (editorMode) {
     const lines = editorContent.split('\n');
     
