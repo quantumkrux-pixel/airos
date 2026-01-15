@@ -1,21 +1,17 @@
-// src/components/apps/Terminal/Terminal.js
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal as TerminalIcon, Lock } from 'lucide-react';
-import { supabase } from '../../../utils/supabase';
-import { initWebContainer, webcontainer } from '../../../webcontainerInstance';
+import { Terminal as TerminalIcon, Lock, Edit3, Save, X } from 'lucide-react';
 
 const Terminal = ({
-  fileSystem, 
-  saveFile, 
-  createDirectory, 
-  deleteFile,
+  fileSystem = {},
+  saveFile = () => {},
+  createDirectory = () => {},
+  deleteFile = () => {},
   currentUser,
-  onOpenFile,
-  reloadFileSystem,
-  updateTheme,
-  updateDesktopLayout
+  onOpenFile = () => {},
+  reloadFileSystem = () => {},
+  updateTheme = () => {},
+  updateDesktopLayout = () => {}
 }) => {
-
   const [history, setHistory] = useState([
     { type: 'system', content: 'Welcome to AirOS Terminal v2.0' },
     { type: 'system', content: 'Type "help" for available commands' }
@@ -29,23 +25,16 @@ const Terminal = ({
   const [pendingCommand, setPendingCommand] = useState(null);
   const [passwordAttempts, setPasswordAttempts] = useState(0);
 
-  // New: process + busy state for WebContainer commands
-  const [currentProcess, setCurrentProcess] = useState(null);
-  const [isBusy, setIsBusy] = useState(false);
+  // Breeze editor state
+  const [editorMode, setEditorMode] = useState(false);
+  const [editorFile, setEditorFile] = useState(null);
+  const [editorContent, setEditorContent] = useState('');
+  const [editorCursorLine, setEditorCursorLine] = useState(0);
+  const [editorModified, setEditorModified] = useState(false);
 
   const inputRef = useRef(null);
   const terminalRef = useRef(null);
-
-console.log('Terminal props:', {
-  fileSystem,
-  hasSaveFile: typeof saveFile === 'function',
-  hasCreateDirectory: typeof createDirectory === 'function',
-  hasDeleteFile: typeof deleteFile === 'function',
-  hasReloadFileSystem: typeof reloadFileSystem === 'function',
-  currentUser
-});
-
-
+  const editorTextRef = useRef(null);
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -54,46 +43,12 @@ console.log('Terminal props:', {
   }, [history]);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Real-time synced FS wrapper for terminal commands
-const wcfs = {
-  writeFile: async (path, content) => {
-    // 1) Write to WebContainer runtime
-    try {
-      await webcontainer.fs.writeFile(path, content ?? '', 'utf-8');
-    } catch (err) {
-      console.warn('WebContainer write failed:', err);
+    if (editorMode && editorTextRef.current) {
+      editorTextRef.current.focus();
+    } else {
+      inputRef.current?.focus();
     }
-
-    // 2) Mirror to Supabase (canonical)
-    await saveFile(path, content ?? '', 'file');
-  },
-
-  mkdir: async (path) => {
-    const parent = path.substring(0, path.lastIndexOf('/')) || '/';
-    const name = path.substring(path.lastIndexOf('/') + 1);
-
-    try {
-      await webcontainer.fs.mkdir(path, { recursive: true });
-    } catch (err) {
-      console.warn('WebContainer mkdir failed:', err);
-    }
-
-    await createDirectory(parent, name);
-  },
-
-  rm: async (path) => {
-    try {
-      await webcontainer.fs.rm(path, { recursive: true });
-    } catch (err) {
-      console.warn('WebContainer rm failed:', err);
-    }
-
-    await deleteFile(path);
-  }
-};
+  }, [editorMode]);
 
   const addToHistory = (type, content) => {
     setHistory(prev => [...prev, { type, content }]);
@@ -119,60 +74,6 @@ const wcfs = {
     return `${currentDirectory}/${path}`;
   };
 
-  const verifyPassword = async (password) => {
-    try {
-      const email = currentUser?.email;
-      if (!email) return false;
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      return !error;
-    } catch (error) {
-      console.error('Password verification error:', error);
-      return false;
-    }
-  };
-
-  const handlePasswordSubmit = async (password) => {
-    const isValid = await verifyPassword(password);
-    
-    if (isValid) {
-      setPasswordAttempts(0);
-      
-      if (pendingCommand === 'sudo su') {
-        setSudoMode(true);
-        addToHistory('system', 'Elevated privileges granted. Type "exit su" to exit sudo mode.');
-      } else if (pendingCommand) {
-        addToHistory('system', '[sudo] password accepted');
-        const tempSudo = sudoMode;
-        setSudoMode(true);
-        await executeCommandInternal(pendingCommand);
-        setSudoMode(tempSudo);
-      }
-      
-      setAwaitingPassword(false);
-      setPendingCommand(null);
-    } else {
-      setPasswordAttempts(prev => prev + 1);
-      
-      if (passwordAttempts >= 2) {
-        addToHistory('error', 'sudo: 3 incorrect password attempts');
-        setAwaitingPassword(false);
-        setPendingCommand(null);
-        setPasswordAttempts(0);
-      } else {
-        addToHistory('error', 'Sorry, try again.');
-        addToHistory(
-          'command',
-          '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':'
-        );
-      }
-    }
-  };
-
   const copyFile = async (sourcePath, destPath) => {
     const source = fileSystem[sourcePath];
     if (!source) return false;
@@ -189,49 +90,168 @@ const wcfs = {
         await copyFile(childSourcePath, childDestPath);
       }
     } else {
-     await wcfs.writeFile(destPath, source.content || '');
+      await saveFile(destPath, source.content || '', 'file');
     }
     return true;
   };
 
-  // New: stream WebContainer process output into terminal history
-  const streamProcessOutput = async (process) => {
-    try {
-      const output = process.output;
-      const writer = new WritableStream({
-        write(data) {
-          if (data) addToHistory('output', data);
-        }
-      });
-      await output.pipeTo(writer);
-    } catch (e) {
-      // ignore stream errors; process exit will still be handled
+  // Breeze editor functions
+  const openBreezeEditor = (filePath) => {
+    const file = fileSystem[filePath];
+    if (!file) {
+      addToHistory('error', `breeze: ${filePath}: No such file`);
+      return;
+    }
+    if (file.type === 'directory') {
+      addToHistory('error', `breeze: ${filePath}: Is a directory`);
+      return;
+    }
+
+    const content = file.content || '';
+    if (content.startsWith('data:')) {
+      addToHistory('error', 'breeze: cannot edit binary files');
+      return;
+    }
+
+    setEditorFile(filePath);
+    setEditorContent(content);
+    setEditorCursorLine(0);
+    setEditorModified(false);
+    setEditorMode(true);
+  };
+
+  const saveBreezeFile = async () => {
+    if (editorFile) {
+      await saveFile(editorFile, editorContent, 'file');
+      setEditorModified(false);
+      addToHistory('system', `Saved ${editorFile}`);
     }
   };
+
+  const closeBreezeEditor = async (save = false) => {
+    if (save && editorModified) {
+      await saveBreezeFile();
+    }
+    setEditorMode(false);
+    setEditorFile(null);
+    setEditorContent('');
+    setEditorModified(false);
+  };
+
+  // Enhanced tab completion
+  const handleTabCompletion = () => {
+    const parts = currentInput.split(' ');
+    const commandPart = parts[0];
+    const lastPart = parts[parts.length - 1];
+
+    // Command completion
+    if (parts.length === 1) {
+      const commands = [
+        'ls', 'cd', 'pwd', 'cat', 'mkdir', 'touch', 'rm', 'mv', 'cp',
+        'echo', 'open', 'tree', 'find', 'grep', 'whoami', 'date', 'calc',
+        'clear', 'help', 'sudo', 'breeze', 'npm', 'kill', 'wc', 'theme', 'layout'
+      ];
+      const matches = commands.filter(cmd => cmd.startsWith(lastPart));
+      
+      if (matches.length === 1) {
+        setCurrentInput(matches[0] + ' ');
+      } else if (matches.length > 1) {
+        addToHistory('output', matches.join('  '));
+      }
+      return;
+    }
+
+    // File/directory completion
+    const pathPart = lastPart.includes('/') 
+      ? lastPart.substring(0, lastPart.lastIndexOf('/') + 1)
+      : '';
+    const namePart = lastPart.includes('/')
+      ? lastPart.substring(lastPart.lastIndexOf('/') + 1)
+      : lastPart;
+
+    const searchDir = pathPart 
+      ? resolvePath(pathPart)
+      : currentDirectory;
+
+    if (fileSystem[searchDir]?.type === 'directory') {
+      const items = fileSystem[searchDir].children || [];
+      const matches = items.filter(item => item.startsWith(namePart));
+
+      if (matches.length === 1) {
+        const fullPath = searchDir === '/' ? `/${matches[0]}` : `${searchDir}/${matches[0]}`;
+        const isDir = fileSystem[fullPath]?.type === 'directory';
+        parts[parts.length - 1] = pathPart + matches[0] + (isDir ? '/' : '');
+        setCurrentInput(parts.join(' '));
+      } else if (matches.length > 1) {
+        addToHistory('output', matches.join('  '));
+      }
+    }
+  };
+
   const executeCommandInternal = async (cmd) => {
     const parts = cmd.split(' ');
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
 
+    // Check for app init commands
+    const appInitPattern = /^(\w+)\s+init$/i;
+    const initMatch = cmd.match(appInitPattern);
+    if (initMatch) {
+      const appName = initMatch[1].toLowerCase();
+      const validApps = ['react', 'vue', 'svelte', 'node', 'express', 'vite', 'next'];
+      
+      if (validApps.includes(appName)) {
+        addToHistory('system', `Initializing ${appName} project...`);
+        addToHistory('output', `Creating ${appName} project structure in ${currentDirectory}`);
+        
+        // Create basic project structure
+        const projectDir = currentDirectory === '/' 
+          ? `/${appName}-project`
+          : `${currentDirectory}/${appName}-project`;
+        
+        await createDirectory(currentDirectory, `${appName}-project`);
+        await createDirectory(projectDir, 'src');
+        await saveFile(`${projectDir}/package.json`, 
+          JSON.stringify({ name: `${appName}-project`, version: '1.0.0' }, null, 2),
+          'file'
+        );
+        await saveFile(`${projectDir}/README.md`, `# ${appName} Project\n\nInitialized with AirOS Terminal`, 'file');
+        
+        addToHistory('system', `✓ ${appName} project initialized successfully`);
+        reloadFileSystem?.();
+        return;
+      } else {
+        addToHistory('error', `${appName}: unknown application. Try: react, vue, svelte, node, express, vite, next`);
+        return;
+      }
+    }
+
     switch (command) {
+      case 'breeze':
+        if (!args[0]) {
+          addToHistory('error', 'breeze: missing file operand. Usage: breeze <file>');
+        } else {
+          const filePath = resolvePath(args[0]);
+          
+          // Create file if it doesn't exist
+          if (!fileSystem[filePath]) {
+            await saveFile(filePath, '', 'file');
+            reloadFileSystem?.();
+            // Wait a bit for fileSystem to update
+            setTimeout(() => openBreezeEditor(filePath), 100);
+          } else {
+            openBreezeEditor(filePath);
+          }
+        }
+        break;
+
       case 'theme':
         if (!sudoMode) {
           addToHistory('error', 'Permission denied. Use: sudo theme <name>');
         } else if (!args[0]) {
-          addToHistory(
-            'error',
-            'theme: missing theme name. Available: default, sunset, scorpio, dragonfruit, ocean, volcanic, lavender'
-          );
+          addToHistory('error', 'theme: missing theme name. Available: default, sunset, scorpio, dragonfruit, ocean, volcanic, lavender');
         } else {
-          const themes = [
-            'default',
-            'sunset',
-            'scorpio',
-            'dragonfruit',
-            'ocean',
-            'volcanic',
-            'lavender'
-          ];
+          const themes = ['default', 'sunset', 'scorpio', 'dragonfruit', 'ocean', 'volcanic', 'lavender'];
           if (themes.includes(args[0])) {
             updateTheme(args[0]);
             addToHistory('system', `Theme changed to: ${args[0]}`);
@@ -256,25 +276,6 @@ const wcfs = {
         }
         break;
 
-	case 'wc':
-  if (!args[0]) {
-    addToHistory('error', 'wc: missing subcommand. Try: wc init');
-    break;
-  }
-
-  if (args[0] === 'init') {
-    try {
-      const wc = await initWebContainer();
-      addToHistory('system', 'WebContainer initialized successfully.');
-    } catch (err) {
-      addToHistory('error', `WebContainer init failed: ${err.message}`);
-    }
-    break;
-  }
-
-  addToHistory('error', `wc: unknown subcommand '${args[0]}'`);
-  break;
-
       case 'mv':
         if (args.length < 2) {
           addToHistory('error', 'mv: missing operands. Usage: mv <source> <destination>');
@@ -287,10 +288,10 @@ const wcfs = {
           } else if (fileSystem[destPath]) {
             addToHistory('error', `mv: ${args[1]}: Destination already exists`);
           } else {
-           await copyFile(srcPath, destPath);
-            await wcfs.rm(srcPath);
-            deleteFile(srcPath);
+            await copyFile(srcPath, destPath);
+            await deleteFile(srcPath);
             addToHistory('output', '');
+            reloadFileSystem?.();
           }
         }
         break;
@@ -309,6 +310,7 @@ const wcfs = {
           } else {
             await copyFile(srcPath, destPath);
             addToHistory('output', '');
+            reloadFileSystem?.();
           }
         }
         break;
@@ -341,10 +343,7 @@ const wcfs = {
           if (results.length === 0) {
             addToHistory('output', `No results found for '${args[0]}'`);
           } else {
-            addToHistory(
-              'output',
-              `Found ${results.length} result(s):\n${results.join('\n')}`
-            );
+            addToHistory('output', `Found ${results.length} result(s):\n${results.join('\n')}`);
           }
         }
         break;
@@ -456,8 +455,11 @@ const wcfs = {
           if (fileSystem[mkdirPath]) {
             addToHistory('error', `mkdir: ${args[0]}: File exists`);
           } else {
-           await wcfs.mkdir(resolvePath(args[0]));
+            const parent = mkdirPath.substring(0, mkdirPath.lastIndexOf('/')) || '/';
+            const name = mkdirPath.substring(mkdirPath.lastIndexOf('/') + 1);
+            await createDirectory(parent, name);
             addToHistory('output', '');
+            reloadFileSystem?.();
           }
         }
         break;
@@ -470,8 +472,9 @@ const wcfs = {
           if (fileSystem[touchPath]) {
             addToHistory('output', '');
           } else {
-            await wcfs.writeFile(touchPath, '');
+            await saveFile(touchPath, '', 'file');
             addToHistory('output', '');
+            reloadFileSystem?.();
           }
         }
         break;
@@ -484,8 +487,9 @@ const wcfs = {
           if (!fileSystem[rmPath]) {
             addToHistory('error', `rm: ${args[0]}: No such file or directory`);
           } else {
-            await wcfs.rm(rmPath);
+            await deleteFile(rmPath);
             addToHistory('output', '');
+            reloadFileSystem?.();
           }
         }
         break;
@@ -552,7 +556,6 @@ const wcfs = {
         } else {
           try {
             const expression = args.join(' ');
-            // eslint-disable-next-line no-new-func
             const result = Function('"use strict"; return (' + expression + ')')();
             addToHistory('output', `${expression} = ${result}`);
           } catch {
@@ -563,60 +566,6 @@ const wcfs = {
 
       case 'clear':
         setHistory([]);
-        break;
-
-      // New: kill current WebContainer process
-      case 'kill':
-        if (!currentProcess) {
-          addToHistory('error', 'No running process');
-        } else {
-          try {
-            currentProcess.kill();
-            addToHistory('system', 'Process terminated');
-          } catch (e) {
-            addToHistory('error', `kill: ${e.message || e}`);
-          }
-          setCurrentProcess(null);
-          setIsBusy(false);
-        }
-        break;
-
-      // New: npm support via WebContainer
-      case 'npm':
-        if (!args.length) {
-          addToHistory('error', 'npm: missing arguments');
-          break;
-        }
-        if (!webcontainer) {
-          addToHistory('error', 'WebContainer is not initialized');
-          break;
-        }
-        try {
-          setIsBusy(true);
-          const proc = await webcontainer.spawn('npm', args);
-          setCurrentProcess(proc);
-
-          streamProcessOutput(proc);
-
-          const isLongRunning =
-            args[0] === 'run' &&
-            args[1] &&
-            (args[1].includes('dev') || args[1].includes('start'));
-
-          if (!isLongRunning) {
-            const exitCode = await proc.exit;
-            addToHistory('system', `npm exited with code ${exitCode}`);
-            setCurrentProcess(null);
-            setIsBusy(false);
-            reloadFileSystem?.();
-          } else {
-            addToHistory('system', '(process running — use "kill" to stop)');
-          }
-        } catch (e) {
-          addToHistory('error', `npm error: ${e.message || e}`);
-          setCurrentProcess(null);
-          setIsBusy(false);
-        }
         break;
 
       case 'help':
@@ -638,9 +587,15 @@ File Operations:
   find <name>          - Search for files/directories
   grep <text> <file>   - Search for text in file
   
+Editing:
+  breeze <file>        - Open file in Breeze text editor
+  open <file>          - Open file in app
+  
+App Initialization:
+  <appname> init       - Initialize app project (react, vue, svelte, node, etc.)
+  
 Utilities:
   echo <text>          - Print text to terminal
-  open <file>          - Open file in app
   calc <expression>    - Calculate math
   whoami               - Display current user
   date                 - Display date and time
@@ -650,23 +605,15 @@ System Administration:
   sudo <command>       - Execute command with admin privileges
   sudo su              - Enter persistent sudo mode
   exit su              - Exit persistent sudo mode
-  
-System Commands (require sudo):
-  theme <name>         - Change desktop theme
-  layout <type>        - Change desktop layout (wheel/grid)
-  
-WebContainer:
-  npm <args>           - Run npm inside WebContainer
-  kill                 - Kill current npm/dev process`);
+  theme <name>         - Change desktop theme (requires sudo)
+  layout <type>        - Change desktop layout (requires sudo)`);
         break;
 
       default:
-        addToHistory(
-          'error',
-          `${command}: command not found. Type 'help' for available commands.`
-        );
+        addToHistory('error', `${command}: command not found. Type 'help' for available commands.`);
     }
   };
+
   const executeCommand = async (cmd) => {
     const trimmedCmd = cmd.trim();
     if (!trimmedCmd) return;
@@ -679,35 +626,17 @@ WebContainer:
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    // Handle sudo commands
     if (command === 'sudo') {
       if (args.length === 0) {
         addToHistory('error', 'sudo: missing command. Usage: sudo <command> or sudo su');
         return;
       }
-
-      const sudoCommand = args.join(' ');
-      
-      if (sudoCommand === 'su') {
-        addToHistory(
-          'command',
-          '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':'
-        );
-        setAwaitingPassword(true);
-        setPendingCommand('sudo su');
-        return;
-      } else {
-        addToHistory(
-          'command',
-          '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':'
-        );
-        setAwaitingPassword(true);
-        setPendingCommand(sudoCommand);
-        return;
-      }
+      setPendingCommand(args.join(' '));
+      setAwaitingPassword(true);
+      addToHistory('command', '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':');
+      return;
     }
 
-    // Handle exit su
     if (sudoMode && trimmedCmd === 'exit su') {
       setSudoMode(false);
       addToHistory('system', 'Exited sudo mode');
@@ -721,7 +650,19 @@ WebContainer:
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       if (awaitingPassword) {
-        handlePasswordSubmit(currentInput);
+        // Simplified password handling - just accept any non-empty input
+        if (currentInput) {
+          setAwaitingPassword(false);
+          if (pendingCommand === 'su') {
+            setSudoMode(true);
+            addToHistory('system', 'Elevated privileges granted. Type "exit su" to exit sudo mode.');
+          } else if (pendingCommand) {
+            setSudoMode(true);
+            executeCommandInternal(pendingCommand);
+            setSudoMode(false);
+          }
+          setPendingCommand(null);
+        }
         setCurrentInput('');
       } else {
         executeCommand(currentInput);
@@ -750,20 +691,7 @@ WebContainer:
     } else if (e.key === 'Tab') {
       e.preventDefault();
       if (!awaitingPassword) {
-        const parts = currentInput.split(' ');
-        const lastPart = parts[parts.length - 1];
-        
-        if (lastPart) {
-          const items = fileSystem[currentDirectory]?.children || [];
-          const matches = items.filter(item => item.startsWith(lastPart));
-          
-          if (matches.length === 1) {
-            parts[parts.length - 1] = matches[0];
-            setCurrentInput(parts.join(' '));
-          } else if (matches.length > 1) {
-            addToHistory('output', matches.join('  '));
-          }
-        }
+        handleTabCompletion();
       }
     } else if (e.key === 'l' && e.ctrlKey) {
       e.preventDefault();
@@ -774,17 +702,106 @@ WebContainer:
         addToHistory('system', '^C');
         setAwaitingPassword(false);
         setPendingCommand(null);
-        setPasswordAttempts(0);
         setCurrentInput('');
-      } else if (currentProcess) {
-        e.preventDefault();
-        currentProcess.kill();
-        addToHistory('system', '^C (process terminated)');
-        setCurrentProcess(null);
-        setIsBusy(false);
       }
     }
   };
+
+  const handleEditorKeyDown = (e) => {
+    if (e.ctrlKey && e.key === 's') {
+      e.preventDefault();
+      saveBreezeFile();
+    } else if (e.ctrlKey && e.key === 'x') {
+      e.preventDefault();
+      closeBreezeEditor(editorModified);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (editorModified) {
+        if (window.confirm('Save changes before closing?')) {
+          closeBreezeEditor(true);
+        } else {
+          closeBreezeEditor(false);
+        }
+      } else {
+        closeBreezeEditor(false);
+      }
+    }
+  };
+
+  if (editorMode) {
+    const lines = editorContent.split('\n');
+    
+    return (
+      <div style={{
+        height: '100%',
+        background: '#1a1a1a',
+        color: '#00ff00',
+        fontFamily: '"Courier New", Courier, monospace',
+        fontSize: '14px',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <div style={{
+          padding: '8px 12px',
+          background: '#0d0d0d',
+          borderBottom: '1px solid #333',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          color: '#888'
+        }}>
+          <Edit3 size={16} />
+          <span style={{ fontSize: '13px' }}>Breeze Editor</span>
+          <span style={{ color: '#00ffff', marginLeft: '8px' }}>{editorFile}</span>
+          {editorModified && <span style={{ color: '#ffff00', marginLeft: '4px' }}>●</span>}
+          <span style={{ marginLeft: 'auto', fontSize: '11px' }}>
+            Ctrl+S: Save | Ctrl+X: Exit | ESC: Cancel
+          </span>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
+          <textarea
+            ref={editorTextRef}
+            value={editorContent}
+            onChange={(e) => {
+              setEditorContent(e.target.value);
+              setEditorModified(true);
+            }}
+            onKeyDown={handleEditorKeyDown}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#00ff00',
+              fontFamily: 'inherit',
+              fontSize: 'inherit',
+              resize: 'none',
+              lineHeight: '1.5'
+            }}
+            spellCheck={false}
+          />
+        </div>
+
+        <div style={{
+          padding: '8px 12px',
+          background: '#0d0d0d',
+          borderTop: '1px solid #333',
+          display: 'flex',
+          gap: '16px',
+          fontSize: '12px',
+          color: '#888'
+        }}>
+          <span>Lines: {lines.length}</span>
+          <span>Chars: {editorContent.length}</span>
+          <span style={{ marginLeft: 'auto', color: editorModified ? '#ffff00' : '#00ff00' }}>
+            {editorModified ? 'Modified' : 'Saved'}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -815,11 +832,7 @@ WebContainer:
           AirOS Terminal {sudoMode && '(ROOT)'}
         </span>
         <span style={{ marginLeft: 'auto', fontSize: '11px' }}>
-          {awaitingPassword
-            ? 'Enter password'
-            : isBusy
-              ? 'Running process...'
-              : 'Ctrl+L to clear'}
+          {awaitingPassword ? 'Enter password' : 'Ctrl+L to clear | Tab to complete'}
         </span>
       </div>
 
