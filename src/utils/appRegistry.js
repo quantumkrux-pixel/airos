@@ -56,7 +56,7 @@ export const appRegistry = {
     name: 'AnySwap'
   },
   archive: {
-    Component: ScreenRipper,
+    Component: ScreenRecorder,
     icon: Video,
     title: 'Screen Ripper',
     name: 'Screen Ripper'
