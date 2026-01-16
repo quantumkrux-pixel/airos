@@ -1,4 +1,4 @@
-import { FileText, Folder, Palette, MessageSquare, Record, Image, Globe, Play, Calendar as CalendarIcon, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
+import { FileText, Folder, Palette, MessageSquare, Video, Image, Globe, Play, Calendar as CalendarIcon, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
 import TextEditor from '../components/apps/TextEditor/TextEditor';
 import FileManager from '../components/apps/FileManager/FileManager';
 import ImageViewer from '../components/apps/ImageViewer/ImageViewer';
@@ -57,7 +57,7 @@ export const appRegistry = {
   },
   archive: {
     Component: ScreenRipper,
-    icon: Record,
+    icon: Video,
     title: 'Screen Ripper',
     name: 'Screen Ripper'
   },
