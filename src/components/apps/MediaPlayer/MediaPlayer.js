@@ -20,18 +20,96 @@ const MediaPlayer = ({ src, title }) => {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
-  const [mediaType, setMediaType] = useState('video'); // 'video' or 'audio'
+  const [mediaType, setMediaType] = useState('video');
+  
   const mediaRef = useRef(null);
   const progressRef = useRef(null);
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const dataArrayRef = useRef(null);
 
   useEffect(() => {
-    // Determine if src is audio or video based on extension or mime type
     if (src) {
       const isAudio = src.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i) || 
                       src.startsWith('data:audio/');
+      const isVideo = src.match(/\.(mp4|mkv|mov|webm|avi)$/i) || 
+                      src.startsWith('data:video/');
       setMediaType(isAudio ? 'audio' : 'video');
     }
   }, [src]);
+
+  // Audio visualizer setup
+  useEffect(() => {
+    if (mediaType === 'audio' && mediaRef.current && !audioContextRef.current) {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaElementSource(mediaRef.current);
+        
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+        
+        audioContextRef.current = audioContext;
+        analyserRef.current = analyser;
+        dataArrayRef.current = dataArray;
+      } catch (e) {
+        console.error('Audio context error:', e);
+      }
+    }
+    
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [mediaType]);
+
+  // Visualizer animation
+  useEffect(() => {
+    if (mediaType === 'audio' && isPlaying && canvasRef.current && analyserRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const analyser = analyserRef.current;
+      const dataArray = dataArrayRef.current;
+      const bufferLength = analyser.frequencyBinCount;
+
+      const draw = () => {
+        animationRef.current = requestAnimationFrame(draw);
+        
+        analyser.getByteFrequencyData(dataArray);
+        
+        ctx.fillStyle = 'rgba(102, 126, 234, 0.1)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+        
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+          
+          const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
+          gradient.addColorStop(0, '#764ba2');
+          gradient.addColorStop(1, '#667eea');
+          
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+          
+          x += barWidth + 1;
+        }
+      };
+      
+      draw();
+    } else if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+  }, [isPlaying, mediaType]);
 
   const togglePlayPause = () => {
     if (mediaRef.current) {
@@ -189,8 +267,26 @@ const MediaPlayer = ({ src, title }) => {
               justifyContent: 'center',
               color: 'white',
               textAlign: 'center',
-              padding: '40px'
+              padding: '40px',
+              width: '100%',
+              height: '100%',
+              position: 'relative'
             }}>
+              {/* Canvas Visualizer */}
+              <canvas
+                ref={canvasRef}
+                width={800}
+                height={200}
+                style={{
+                  width: '100%',
+                  maxWidth: '800px',
+                  height: '200px',
+                  marginBottom: '32px',
+                  borderRadius: '12px',
+                  background: 'rgba(0, 0, 0, 0.2)'
+                }}
+              />
+              
               <div style={{
                 width: '200px',
                 height: '200px',
