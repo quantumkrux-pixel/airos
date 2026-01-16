@@ -8,9 +8,21 @@ const Desktop = ({ onLaunchApp, settings }) => {
   const [hoveredApp, setHoveredApp] = useState(null);
   const { openContextMenu } = useContextMenu();
 
-  // Calculate position on circle
+  // Calculate position on circle with responsive radius
   const getCirclePosition = (index, total) => {
-    const radius = 200; // Distance from center
+    // Responsive radius based on screen size
+    const isMobile = window.innerWidth < 768;
+    const isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+    
+    let radius;
+    if (isMobile) {
+      radius = 120; // Smaller radius for mobile
+    } else if (isTablet) {
+      radius = 160; // Medium radius for tablets
+    } else {
+      radius = 200; // Full radius for desktop
+    }
+    
     const angle = (index * 360 / total) - 90; // Start from top (-90 degrees)
     const radian = (angle * Math.PI) / 180;
 
@@ -73,11 +85,11 @@ const Desktop = ({ onLaunchApp, settings }) => {
         locked={settings?.lockClockWidget}
       />
 
-      {/* Center point decoration */}
+      {/* Center point decoration - responsive sizing */}
       <div style={{
         position: 'absolute',
-        width: '80px',
-        height: '80px',
+        width: window.innerWidth < 768 ? '50px' : '80px',
+        height: window.innerWidth < 768 ? '50px' : '80px',
         borderRadius: '50%',
         background: 'rgba(255, 255, 255, 0.15)',
         backdropFilter: 'blur(10px)',
@@ -89,8 +101,8 @@ const Desktop = ({ onLaunchApp, settings }) => {
         zIndex: 0
       }}>
         <div style={{
-          width: '40px',
-          height: '40px',
+          width: window.innerWidth < 768 ? '25px' : '40px',
+          height: window.innerWidth < 768 ? '25px' : '40px',
           borderRadius: '50%',
           background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.1) 100%)',
           boxShadow: 'inset 0 2px 8px rgba(0, 0, 0, 0.1)'
@@ -101,9 +113,13 @@ const Desktop = ({ onLaunchApp, settings }) => {
       {desktopApps.map((app, index) => {
         const position = getCirclePosition(index, desktopApps.length);
         const isHovered = hoveredApp === index;
-        const scale = isHovered ? 1.4 : 1;
-        const iconSize = isHovered ? 56 : 40;
-        const containerSize = isHovered ? 120 : 90;
+        
+        // Responsive sizing
+        const isMobile = window.innerWidth < 768;
+        const baseScale = isMobile ? 0.7 : 1;
+        const scale = isHovered ? baseScale * 1.4 : baseScale;
+        const iconSize = isMobile ? (isHovered ? 36 : 28) : (isHovered ? 56 : 40);
+        const containerSize = isMobile ? (isHovered ? 80 : 60) : (isHovered ? 120 : 90);
 
         return (
           <div
@@ -129,7 +145,7 @@ const Desktop = ({ onLaunchApp, settings }) => {
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '12px',
+              gap: isMobile ? '8px' : '12px',
               cursor: 'pointer',
               transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
               zIndex: isHovered ? 10 : 1
@@ -138,8 +154,8 @@ const Desktop = ({ onLaunchApp, settings }) => {
             {/* Icon container with glow effect */}
             <div style={{
               position: 'relative',
-              width: `${iconSize + 32}px`,
-              height: `${iconSize + 32}px`,
+              width: `${iconSize + (isMobile ? 20 : 32)}px`,
+              height: `${iconSize + (isMobile ? 20 : 32)}px`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -169,12 +185,12 @@ const Desktop = ({ onLaunchApp, settings }) => {
               {/* Icon background */}
               <div style={{
                 position: 'relative',
-                padding: '16px',
+                padding: isMobile ? '10px' : '16px',
                 background: isHovered
                   ? 'linear-gradient(135deg, rgba(128, 240, 188, 0.91) 0%, rgba(71, 240, 183, 0.73) 100%)'
                   : 'rgba(255, 255, 255, 0.25)',
                 backdropFilter: 'blur(20px)',
-                borderRadius: '20px',
+                borderRadius: isMobile ? '14px' : '20px',
                 border: isHovered
                   ? '2px solid rgba(255, 255, 255, 0.5)'
                   : '2px solid rgba(255, 255, 255, 0.3)',
@@ -198,7 +214,7 @@ const Desktop = ({ onLaunchApp, settings }) => {
             {/* App name */}
             <span style={{
               color: 'white',
-              fontSize: isHovered ? '16px' : '14px',
+              fontSize: isMobile ? (isHovered ? '12px' : '10px') : (isHovered ? '16px' : '14px'),
               fontWeight: isHovered ? '700' : '600',
               textAlign: 'center',
               textShadow: isHovered
@@ -238,7 +254,7 @@ const Desktop = ({ onLaunchApp, settings }) => {
           position: 'absolute',
           textAlign: 'center',
           color: 'white',
-          fontSize: '24px',
+          fontSize: window.innerWidth < 768 ? '18px' : '24px',
           fontWeight: '700',
           textShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
           letterSpacing: '1px',
