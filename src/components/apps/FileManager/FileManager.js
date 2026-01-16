@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Folder,
   File,
@@ -7,7 +7,8 @@ import {
   Home,
   Upload,
   Image as ImageIcon,
-  FileText
+  FileText,
+  AlertCircle
 } from 'lucide-react';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 
@@ -25,8 +26,11 @@ const FileManager = ({
   const [newName, setNewName] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState(''); // Status message
+  const [uploadError, setUploadError] = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null); // for preview
-
+  
+  const fileInputRef = useRef(null);
   const { openContextMenu } = useContextMenu();
 
   // -------------------------------
@@ -84,52 +88,151 @@ const FileManager = ({
     const fullPath =
       currentPath === '/' ? `/${newName.trim()}` : `${currentPath}/${newName.trim()}`;
 
-    if (creating === 'folder') {
-      await createDirectory(currentPath, newName.trim());
-    } else {
-      await saveFile(fullPath, '', 'file');
-    }
+    try {
+      if (creating === 'folder') {
+        await createDirectory(currentPath, newName.trim());
+      } else {
+        await saveFile(fullPath, '', 'file');
+      }
 
-    setCreating(null);
-    setNewName('');
-    await reloadFileSystem();
+      setCreating(null);
+      setNewName('');
+      await reloadFileSystem();
+    } catch (error) {
+      console.error('Error creating:', error);
+      alert(`Failed to create ${creating}: ${error.message}`);
+    }
   };
 
   // -------------------------------
-  // Upload files
+  // Upload files - IMPROVED VERSION
   // -------------------------------
   const handleUpload = async (files) => {
-    if (!files.length) return;
-
-    setUploading(true);
-    setUploadProgress(0);
-
-    let completed = 0;
-
-    for (const file of files) {
-      const arrayBuffer = await file.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(arrayBuffer).reduce(
-          (data, byte) => data + String.fromCharCode(byte),
-          ''
-        )
-      );
-
-      const mime = file.type || 'application/octet-stream';
-      const dataUrl = `data:${mime};base64,${base64}`;
-
-      const fullPath =
-        currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-
-      await saveFile(fullPath, dataUrl, 'file');
-
-      completed++;
-      setUploadProgress(Math.round((completed / files.length) * 100));
+    if (!files || files.length === 0) {
+      console.log('No files selected');
+      return;
     }
 
-    setUploading(false);
+    console.log(`Starting upload of ${files.length} file(s)`);
+    
+    setUploading(true);
     setUploadProgress(0);
-    await reloadFileSystem();
+    setUploadError(null);
+    setUploadStatus('Preparing upload...');
+
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
+    let completed = 0;
+    let failed = 0;
+    const failedFiles = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        try {
+          // Validate file size
+          if (file.size > MAX_FILE_SIZE) {
+            console.warn(`File ${file.name} exceeds size limit`);
+            failedFiles.push({ name: file.name, reason: 'File too large (max 50MB)' });
+            failed++;
+            continue;
+          }
+
+          // Validate file name
+          const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          
+          setUploadStatus(`Uploading ${i + 1}/${files.length}: ${file.name}`);
+          console.log(`Processing file: ${file.name} (${file.size} bytes, type: ${file.type})`);
+
+          // Read file as ArrayBuffer
+          const arrayBuffer = await file.arrayBuffer();
+          
+          // Convert to base64
+          const uint8Array = new Uint8Array(arrayBuffer);
+          let binary = '';
+          const chunkSize = 0x8000; // 32KB chunks to avoid call stack size exceeded
+          
+          for (let offset = 0; offset < uint8Array.length; offset += chunkSize) {
+            const chunk = uint8Array.subarray(offset, offset + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+          }
+          
+          const base64 = btoa(binary);
+
+          // Determine MIME type
+          const mime = file.type || 'application/octet-stream';
+          const dataUrl = `data:${mime};base64,${base64}`;
+
+          console.log(`Encoded ${file.name}: ${dataUrl.length} chars, mime: ${mime}`);
+
+          // Construct full path
+          const fullPath =
+            currentPath === '/' ? `/${sanitizedName}` : `${currentPath}/${sanitizedName}`;
+
+          // Check if file already exists
+          if (fileSystem[fullPath]) {
+            const overwrite = window.confirm(
+              `File "${sanitizedName}" already exists. Overwrite?`
+            );
+            if (!overwrite) {
+              console.log(`Skipping ${file.name} - user cancelled overwrite`);
+              failedFiles.push({ name: file.name, reason: 'User cancelled overwrite' });
+              failed++;
+              continue;
+            }
+          }
+
+          // Save file
+          await saveFile(fullPath, dataUrl, 'file');
+          console.log(`Successfully saved ${file.name}`);
+
+          completed++;
+          setUploadProgress(Math.round(((completed + failed) / files.length) * 100));
+          
+        } catch (fileError) {
+          console.error(`Error uploading ${file.name}:`, fileError);
+          failedFiles.push({ name: file.name, reason: fileError.message });
+          failed++;
+        }
+      }
+
+      // Reload file system after all uploads
+      await reloadFileSystem();
+
+      // Show results
+      if (failed === 0) {
+        setUploadStatus(`✓ Successfully uploaded ${completed} file(s)`);
+        setTimeout(() => {
+          setUploading(false);
+          setUploadStatus('');
+        }, 2000);
+      } else {
+        const errorMsg = `Uploaded ${completed} file(s), ${failed} failed:\n${failedFiles.map(f => `• ${f.name}: ${f.reason}`).join('\n')}`;
+        setUploadError(errorMsg);
+        setUploadStatus(`⚠ Upload completed with errors`);
+      }
+
+      console.log(`Upload complete: ${completed} succeeded, ${failed} failed`);
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(`Upload failed: ${error.message}`);
+      setUploadStatus('✗ Upload failed');
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    // Auto-hide success message
+    if (!uploadError) {
+      setTimeout(() => {
+        setUploading(false);
+        setUploadProgress(0);
+        setUploadStatus('');
+      }, 3000);
+    }
   };
 
   // -------------------------------
@@ -165,16 +268,29 @@ const FileManager = ({
                 ? `/${newName}`
                 : `${currentPath}/${newName}`;
 
-            await saveFile(newPath, node.content || '', entry.type);
-            await deleteFile(entry.path);
-            await reloadFileSystem();
+            try {
+              await saveFile(newPath, node.content || '', entry.type);
+              await deleteFile(entry.path);
+              await reloadFileSystem();
+            } catch (error) {
+              alert(`Failed to rename: ${error.message}`);
+            }
           }
         },
         {
           label: 'Delete',
           onClick: async () => {
-            await deleteFile(entry.path);
-            await reloadFileSystem();
+            const confirmed = window.confirm(
+              `Are you sure you want to delete "${entry.name}"?`
+            );
+            if (!confirmed) return;
+
+            try {
+              await deleteFile(entry.path);
+              await reloadFileSystem();
+            } catch (error) {
+              alert(`Failed to delete: ${error.message}`);
+            }
           }
         },
         {
@@ -182,7 +298,9 @@ const FileManager = ({
           onClick: () => {
             const size =
               node?.content && typeof node.content === 'string'
-                ? `${node.content.length} chars`
+                ? node.content.startsWith('data:')
+                  ? `${Math.round(node.content.length * 0.75 / 1024)} KB (base64)`
+                  : `${node.content.length} chars`
                 : 'Unknown';
             alert(
               `Name: ${entry.name}\nPath: ${entry.path}\nType: ${entry.type}\nSize: ${size}`
@@ -275,12 +393,14 @@ const FileManager = ({
           >
             <button
               onClick={goUp}
+              disabled={currentPath === '/'}
               style={{
                 padding: '4px',
                 borderRadius: '4px',
                 border: '1px solid #d1d5db',
-                background: 'white',
-                cursor: 'pointer'
+                background: currentPath === '/' ? '#e5e7eb' : 'white',
+                cursor: currentPath === '/' ? 'not-allowed' : 'pointer',
+                opacity: currentPath === '/' ? 0.5 : 1
               }}
             >
               <ChevronLeft size={16} />
@@ -329,13 +449,15 @@ const FileManager = ({
             {/* New Folder */}
             <button
               onClick={() => setCreating('folder')}
+              disabled={uploading}
               style={{
                 padding: '4px 8px',
                 borderRadius: '4px',
                 border: '1px solid #d1d5db',
-                background: '#eef2ff',
-                cursor: 'pointer',
-                fontSize: '12px'
+                background: uploading ? '#e5e7eb' : '#eef2ff',
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                fontSize: '12px',
+                opacity: uploading ? 0.5 : 1
               }}
             >
               New Folder
@@ -344,13 +466,15 @@ const FileManager = ({
             {/* New File */}
             <button
               onClick={() => setCreating('file')}
+              disabled={uploading}
               style={{
                 padding: '4px 8px',
                 borderRadius: '4px',
                 border: '1px solid #d1d5db',
-                background: '#e0f2fe',
-                cursor: 'pointer',
-                fontSize: '12px'
+                background: uploading ? '#e5e7eb' : '#e0f2fe',
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                fontSize: '12px',
+                opacity: uploading ? 0.5 : 1
               }}
             >
               New File
@@ -365,19 +489,27 @@ const FileManager = ({
                 padding: '4px 8px',
                 borderRadius: '4px',
                 border: '1px solid #3b82f6',
-                background: '#eff6ff',
-                color: '#1d4ed8',
-                cursor: 'pointer',
-                fontSize: '12px'
+                background: uploading ? '#e5e7eb' : '#eff6ff',
+                color: uploading ? '#6b7280' : '#1d4ed8',
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                fontSize: '12px',
+                opacity: uploading ? 0.5 : 1
               }}
             >
               <Upload size={14} />
               Upload
               <input
+                ref={fileInputRef}
                 type="file"
                 multiple
+                disabled={uploading}
                 style={{ display: 'none' }}
-                onChange={(e) => handleUpload(Array.from(e.target.files))}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) {
+                    handleUpload(files);
+                  }
+                }}
               />
             </label>
           </div>
@@ -397,6 +529,7 @@ const FileManager = ({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder={`New ${creating} name...`}
+                autoFocus
                 style={{
                   flex: 1,
                   padding: '6px',
@@ -405,6 +538,10 @@ const FileManager = ({
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate();
+                  if (e.key === 'Escape') {
+                    setCreating(null);
+                    setNewName('');
+                  }
                 }}
               />
 
@@ -415,7 +552,8 @@ const FileManager = ({
                   background: '#3b82f6',
                   color: 'white',
                   borderRadius: '4px',
-                  border: 'none'
+                  border: 'none',
+                  cursor: 'pointer'
                 }}
               >
                 Create
@@ -430,7 +568,8 @@ const FileManager = ({
                   padding: '6px 12px',
                   background: '#d1d5db',
                   borderRadius: '4px',
-                  border: 'none'
+                  border: 'none',
+                  cursor: 'pointer'
                 }}
               >
                 Cancel
@@ -440,15 +579,22 @@ const FileManager = ({
 
           {/* Upload Progress */}
           {uploading && (
-            <div style={{ padding: '12px', background: '#dbeafe' }}>
-              <div style={{ marginBottom: '8px', color: '#1e40af' }}>
-                Uploading... {uploadProgress}%
+            <div style={{ padding: '12px', background: uploadError ? '#fee2e2' : '#dbeafe' }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                marginBottom: '8px', 
+                color: uploadError ? '#991b1b' : '#1e40af'
+              }}>
+                {uploadError && <AlertCircle size={16} />}
+                <span>{uploadStatus}</span>
               </div>
               <div
                 style={{
                   width: '100%',
                   height: '4px',
-                  background: '#bfdbfe',
+                  background: uploadError ? '#fecaca' : '#bfdbfe',
                   borderRadius: '2px'
                 }}
               >
@@ -456,10 +602,43 @@ const FileManager = ({
                   style={{
                     width: `${uploadProgress}%`,
                     height: '100%',
-                    background: '#3b82f6'
+                    background: uploadError ? '#dc2626' : '#3b82f6',
+                    transition: 'width 0.3s ease'
                   }}
                 />
               </div>
+              {uploadError && (
+                <div style={{
+                  marginTop: '8px',
+                  fontSize: '12px',
+                  color: '#991b1b',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {uploadError}
+                </div>
+              )}
+              {uploadError && (
+                <button
+                  onClick={() => {
+                    setUploading(false);
+                    setUploadError(null);
+                    setUploadProgress(0);
+                    setUploadStatus('');
+                  }}
+                  style={{
+                    marginTop: '8px',
+                    padding: '4px 8px',
+                    background: '#dc2626',
+                    color: 'white',
+                    borderRadius: '4px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Dismiss
+                </button>
+              )}
             </div>
           )}
 
@@ -470,8 +649,9 @@ const FileManager = ({
               overflow: 'auto',
               padding: '16px',
               display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: '16px'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+              gap: '16px',
+              alignContent: 'start'
             }}
           >
             {entries.map((entry) => {
@@ -481,13 +661,19 @@ const FileManager = ({
               return (
                 <div
                   key={entry.path}
-                  onClick={(e) => {
+                  onClick={() => {
                     if (entry.type === 'directory') {
                       setCurrentPath(entry.path);
                       setSelectedEntry(null);
                     } else {
-                      onOpenFile(entry.name, entry.path);
                       setSelectedEntry(entry);
+                    }
+                  }}
+                  onDoubleClick={() => {
+                    if (entry.type === 'directory') {
+                      setCurrentPath(entry.path);
+                    } else {
+                      onOpenFile(entry.name, entry.path);
                     }
                   }}
                   onContextMenu={(e) => {
@@ -500,10 +686,11 @@ const FileManager = ({
                     cursor: 'pointer',
                     background: isSelected ? '#e0f2fe' : 'white',
                     border: isSelected
-                      ? '1px solid #3b82f6'
+                      ? '2px solid #3b82f6'
                       : '1px solid #e5e7eb',
                     textAlign: 'center',
-                    transition: '0.2s'
+                    transition: '0.2s',
+                    userSelect: 'none'
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {
@@ -524,8 +711,9 @@ const FileManager = ({
                   <div
                     style={{
                       marginTop: '8px',
-                      fontSize: '14px',
-                      wordBreak: 'break-word'
+                      fontSize: '13px',
+                      wordBreak: 'break-word',
+                      lineHeight: '1.3'
                     }}
                   >
                     {entry.name}
@@ -561,7 +749,8 @@ const FileManager = ({
             padding: '12px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '12px'
+            gap: '12px',
+            overflow: 'auto'
           }}
         >
           <h3
@@ -605,19 +794,20 @@ const FileManager = ({
                 ) : (
                   <File size={32} color="#3b82f6" />
                 )}
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
                       fontSize: '14px',
                       fontWeight: '600',
-                      color: '#111827'
+                      color: '#111827',
+                      wordBreak: 'break-word'
                     }}
                   >
                     {selectedEntry.name}
                   </div>
                   <div
                     style={{
-                      fontSize: '12px',
+                      fontSize: '11px',
                       color: '#6b7280',
                       wordBreak: 'break-all'
                     }}
