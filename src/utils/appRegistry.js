@@ -97,7 +97,7 @@ export const appCategories = {
   productivity: {
     name: 'Productivity',
     icon: '💼',
-    apps: ['text', 'files', 'fileswap', 'calendar', 'chat']
+    apps: ['text', 'archive', 'files', 'fileswap', 'calendar', 'chat']
   },
   creativity: {
     name: 'Creativity',
