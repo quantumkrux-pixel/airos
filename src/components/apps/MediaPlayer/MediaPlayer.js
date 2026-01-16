@@ -10,7 +10,8 @@ import {
   Music,
   Film,
   Repeat,
-  Shuffle
+  Youtube,
+  Link
 } from 'lucide-react';
 
 const MediaPlayer = ({ src, title }) => {
@@ -21,6 +22,10 @@ const MediaPlayer = ({ src, title }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [mediaType, setMediaType] = useState('video');
+  const [youtubeId, setYoutubeId] = useState(null);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [currentSrc, setCurrentSrc] = useState(src);
   
   const mediaRef = useRef(null);
   const progressRef = useRef(null);
@@ -29,16 +34,117 @@ const MediaPlayer = ({ src, title }) => {
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
+  const youtubePlayerRef = useRef(null);
+  const updateIntervalRef = useRef(null);
+
+  // Extract YouTube video ID from URL
+  const extractYoutubeId = (url) => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\?\/]+)/,
+      /youtube\.com\/shorts\/([^&\?\/]+)/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
 
   useEffect(() => {
-    if (src) {
-      const isAudio = src.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i) || 
-                      src.startsWith('data:audio/');
-      const isVideo = src.match(/\.(mp4|mkv|mov|webm|avi)$/i) || 
-                      src.startsWith('data:video/');
-      setMediaType(isAudio ? 'audio' : 'video');
+    const currentSource = currentSrc || src;
+    if (currentSource) {
+      const ytId = extractYoutubeId(currentSource);
+      if (ytId) {
+        setYoutubeId(ytId);
+        setMediaType('youtube');
+      } else {
+        setYoutubeId(null);
+        const isAudio = currentSource.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i) || 
+                        currentSource.startsWith('data:audio/');
+        setMediaType(isAudio ? 'audio' : 'video');
+      }
     }
-  }, [src]);
+  }, [currentSrc, src]);
+
+  // Load YouTube IFrame API
+  useEffect(() => {
+    if (mediaType === 'youtube' && !window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+  }, [mediaType]);
+
+  // Initialize YouTube player
+  useEffect(() => {
+    if (mediaType === 'youtube' && youtubeId && window.YT && window.YT.Player) {
+      if (youtubePlayerRef.current) {
+        youtubePlayerRef.current.destroy();
+      }
+
+      window.onYouTubeIframeAPIReady = () => {
+        youtubePlayerRef.current = new window.YT.Player('youtube-player', {
+          videoId: youtubeId,
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            modestbranding: 1,
+            rel: 0
+          },
+          events: {
+            onReady: (event) => {
+              setDuration(event.target.getDuration());
+              event.target.setVolume(volume * 100);
+            },
+            onStateChange: (event) => {
+              if (event.data === window.YT.PlayerState.PLAYING) {
+                setIsPlaying(true);
+                startYouTubeTimeUpdate();
+              } else if (event.data === window.YT.PlayerState.PAUSED) {
+                setIsPlaying(false);
+                stopYouTubeTimeUpdate();
+              } else if (event.data === window.YT.PlayerState.ENDED) {
+                setIsPlaying(false);
+                stopYouTubeTimeUpdate();
+                if (isLooping) {
+                  event.target.playVideo();
+                }
+              }
+            }
+          }
+        });
+      };
+
+      if (window.YT.loaded) {
+        window.onYouTubeIframeAPIReady();
+      }
+    }
+
+    return () => {
+      stopYouTubeTimeUpdate();
+      if (youtubePlayerRef.current) {
+        youtubePlayerRef.current.destroy();
+      }
+    };
+  }, [youtubeId, mediaType]);
+
+  const startYouTubeTimeUpdate = () => {
+    stopYouTubeTimeUpdate();
+    updateIntervalRef.current = setInterval(() => {
+      if (youtubePlayerRef.current && youtubePlayerRef.current.getCurrentTime) {
+        setCurrentTime(youtubePlayerRef.current.getCurrentTime());
+      }
+    }, 100);
+  };
+
+  const stopYouTubeTimeUpdate = () => {
+    if (updateIntervalRef.current) {
+      clearInterval(updateIntervalRef.current);
+      updateIntervalRef.current = null;
+    }
+  };
 
   // Audio visualizer setup
   useEffect(() => {
@@ -112,7 +218,13 @@ const MediaPlayer = ({ src, title }) => {
   }, [isPlaying, mediaType]);
 
   const togglePlayPause = () => {
-    if (mediaRef.current) {
+    if (mediaType === 'youtube' && youtubePlayerRef.current) {
+      if (isPlaying) {
+        youtubePlayerRef.current.pauseVideo();
+      } else {
+        youtubePlayerRef.current.playVideo();
+      }
+    } else if (mediaRef.current) {
       if (isPlaying) {
         mediaRef.current.pause();
       } else {
@@ -135,51 +247,93 @@ const MediaPlayer = ({ src, title }) => {
   };
 
   const handleProgressClick = (e) => {
-    if (progressRef.current && mediaRef.current) {
+    if (progressRef.current) {
       const bounds = progressRef.current.getBoundingClientRect();
       const percent = (e.clientX - bounds.left) / bounds.width;
-      mediaRef.current.currentTime = percent * duration;
+      const newTime = percent * duration;
+      
+      if (mediaType === 'youtube' && youtubePlayerRef.current) {
+        youtubePlayerRef.current.seekTo(newTime, true);
+      } else if (mediaRef.current) {
+        mediaRef.current.currentTime = newTime;
+      }
     }
   };
 
   const handleVolumeChange = (e) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
-    if (mediaRef.current) {
+    
+    if (mediaType === 'youtube' && youtubePlayerRef.current) {
+      youtubePlayerRef.current.setVolume(newVolume * 100);
+      if (newVolume === 0) {
+        youtubePlayerRef.current.mute();
+        setIsMuted(true);
+      } else {
+        youtubePlayerRef.current.unMute();
+        setIsMuted(false);
+      }
+    } else if (mediaRef.current) {
       mediaRef.current.volume = newVolume;
-    }
-    if (newVolume === 0) {
-      setIsMuted(true);
-    } else if (isMuted) {
-      setIsMuted(false);
+      if (newVolume === 0) {
+        setIsMuted(true);
+      } else if (isMuted) {
+        setIsMuted(false);
+      }
     }
   };
 
   const toggleMute = () => {
-    if (mediaRef.current) {
+    if (mediaType === 'youtube' && youtubePlayerRef.current) {
+      if (isMuted) {
+        youtubePlayerRef.current.unMute();
+        setIsMuted(false);
+      } else {
+        youtubePlayerRef.current.mute();
+        setIsMuted(true);
+      }
+    } else if (mediaRef.current) {
       mediaRef.current.muted = !isMuted;
       setIsMuted(!isMuted);
     }
   };
 
   const toggleLoop = () => {
-    if (mediaRef.current) {
+    setIsLooping(!isLooping);
+    if (mediaRef.current && mediaType !== 'youtube') {
       mediaRef.current.loop = !isLooping;
-      setIsLooping(!isLooping);
     }
   };
 
   const skipTime = (seconds) => {
-    if (mediaRef.current) {
+    if (mediaType === 'youtube' && youtubePlayerRef.current) {
+      const newTime = youtubePlayerRef.current.getCurrentTime() + seconds;
+      youtubePlayerRef.current.seekTo(Math.max(0, Math.min(newTime, duration)), true);
+    } else if (mediaRef.current) {
       mediaRef.current.currentTime += seconds;
     }
   };
 
   const toggleFullscreen = () => {
-    if (mediaRef.current && mediaType === 'video') {
+    if (mediaType === 'youtube') {
+      const iframe = document.getElementById('youtube-player');
+      if (iframe && iframe.requestFullscreen) {
+        iframe.requestFullscreen();
+      }
+    } else if (mediaRef.current) {
       if (mediaRef.current.requestFullscreen) {
         mediaRef.current.requestFullscreen();
       }
+    }
+  };
+
+  const handleLoadUrl = () => {
+    if (urlInput.trim()) {
+      setCurrentSrc(urlInput);
+      setShowUrlInput(false);
+      setUrlInput('');
+      setIsPlaying(false);
+      setCurrentTime(0);
     }
   };
 
@@ -190,7 +344,9 @@ const MediaPlayer = ({ src, title }) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  if (!src) {
+  const displaySrc = currentSrc || src;
+
+  if (!displaySrc) {
     return (
       <div style={{
         display: 'flex',
@@ -199,17 +355,99 @@ const MediaPlayer = ({ src, title }) => {
         justifyContent: 'center',
         height: '100%',
         background: 'linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%)',
-        color: '#9ca3af'
+        color: '#9ca3af',
+        padding: '40px'
       }}>
         <div style={{ fontSize: '64px', marginBottom: '16px' }}>
-          {mediaType === 'audio' ? '🎵' : '🎬'}
+          🎬
         </div>
         <div style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px' }}>
           No media loaded
         </div>
-        <div style={{ fontSize: '14px' }}>
-          Launch a video or audio file to play
+        <div style={{ fontSize: '14px', marginBottom: '24px' }}>
+          Load a video, audio file, or YouTube URL
         </div>
+        <button
+          onClick={() => setShowUrlInput(true)}
+          style={{
+            padding: '12px 24px',
+            background: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Link size={18} />
+          Load URL
+        </button>
+        
+        {showUrlInput && (
+          <div style={{
+            marginTop: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            width: '100%',
+            maxWidth: '500px'
+          }}>
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleLoadUrl()}
+              placeholder="Enter video URL or YouTube link..."
+              style={{
+                padding: '12px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                color: 'white',
+                fontSize: '14px'
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleLoadUrl}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Load
+              </button>
+              <button
+                onClick={() => {
+                  setShowUrlInput(false);
+                  setUrlInput('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -234,10 +472,23 @@ const MediaPlayer = ({ src, title }) => {
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {mediaType === 'video' ? (
+        {mediaType === 'youtube' ? (
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            <div
+              id="youtube-player"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%'
+              }}
+            />
+          </div>
+        ) : mediaType === 'video' ? (
           <video
             ref={mediaRef}
-            src={src}
+            src={displaySrc}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onEnded={() => setIsPlaying(false)}
@@ -253,7 +504,7 @@ const MediaPlayer = ({ src, title }) => {
           <>
             <audio
               ref={mediaRef}
-              src={src}
+              src={displaySrc}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
               onEnded={() => setIsPlaying(false)}
@@ -272,7 +523,6 @@ const MediaPlayer = ({ src, title }) => {
               height: '100%',
               position: 'relative'
             }}>
-              {/* Canvas Visualizer */}
               <canvas
                 ref={canvasRef}
                 width={800}
@@ -329,6 +579,21 @@ const MediaPlayer = ({ src, title }) => {
         padding: '16px',
         borderTop: '1px solid rgba(255, 255, 255, 0.1)'
       }}>
+        {/* Title Bar */}
+        {mediaType === 'youtube' && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '12px',
+            color: 'white',
+            fontSize: '14px'
+          }}>
+            <Youtube size={18} color="#ff0000" />
+            <span style={{ fontWeight: '600' }}>{title || 'YouTube Video'}</span>
+          </div>
+        )}
+
         {/* Progress Bar */}
         <div style={{ marginBottom: '16px' }}>
           <div
@@ -348,9 +613,11 @@ const MediaPlayer = ({ src, title }) => {
               style={{
                 width: `${(currentTime / duration) * 100}%`,
                 height: '100%',
-                background: mediaType === 'audio' 
-                  ? 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)'
-                  : '#3b82f6',
+                background: mediaType === 'youtube'
+                  ? '#ff0000'
+                  : mediaType === 'audio' 
+                    ? 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)'
+                    : '#3b82f6',
                 borderRadius: '3px',
                 transition: 'width 0.1s linear'
               }}
@@ -398,6 +665,11 @@ const MediaPlayer = ({ src, title }) => {
               title="Loop"
               active={isLooping}
             />
+            <ControlButton
+              icon={<Link size={18} />}
+              onClick={() => setShowUrlInput(!showUrlInput)}
+              title="Load URL"
+            />
           </div>
 
           {/* Right Controls */}
@@ -419,15 +691,54 @@ const MediaPlayer = ({ src, title }) => {
                 cursor: 'pointer'
               }}
             />
-            {mediaType === 'video' && (
-              <ControlButton
-                icon={<Maximize size={20} />}
-                onClick={toggleFullscreen}
-                title="Fullscreen"
-              />
-            )}
+            <ControlButton
+              icon={<Maximize size={20} />}
+              onClick={toggleFullscreen}
+              title="Fullscreen"
+            />
           </div>
         </div>
+
+        {/* URL Input */}
+        {showUrlInput && (
+          <div style={{
+            marginTop: '16px',
+            display: 'flex',
+            gap: '8px'
+          }}>
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleLoadUrl()}
+              placeholder="Enter video URL or YouTube link..."
+              style={{
+                flex: 1,
+                padding: '10px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '6px',
+                color: 'white',
+                fontSize: '14px'
+              }}
+            />
+            <button
+              onClick={handleLoadUrl}
+              style={{
+                padding: '10px 20px',
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600'
+              }}
+            >
+              Load
+            </button>
+          </div>
+        )}
       </div>
 
       <style>
