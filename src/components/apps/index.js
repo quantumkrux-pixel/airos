@@ -7,6 +7,6 @@ export { default as Calendar } from './Calendar/Calendar';
 export { default as Terminal } from './Terminal/Terminal';
 export { default as CodeEditor } from './CodeEditor/CodeEditor';
 export { default as FileConverter } from './FileConverter/FileConverter';
-export { default as Screengrip } from './ScreenGrip';
+export { default as Screen Ripper } from './Screen Ripper';
 export { SketchApp } from './Sketch/SketchApp';
 export { AirChat } from './AirChat/AirChat';
