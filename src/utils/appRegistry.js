@@ -1,4 +1,4 @@
-import { FileText, Folder, Palette, MessageSquare, Image, Globe, Play, Calendar as CalendarIcon, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
+import { FileText, Folder, Palette, MessageSquare, Record, Image, Globe, Play, Calendar as CalendarIcon, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
 import TextEditor from '../components/apps/TextEditor/TextEditor';
 import FileManager from '../components/apps/FileManager/FileManager';
 import ImageViewer from '../components/apps/ImageViewer/ImageViewer';
@@ -10,7 +10,7 @@ import CodeEditor from '../components/apps/CodeEditor/CodeEditor';
 import FileConverter from '../components/apps/FileConverter/FileConverter';
 import { SketchApp } from '../components/apps/Sketch/SketchApp';
 import AirChat from '../components/apps/AirChat/AirChat';
-
+import ScreenRecorder from '../components/apps/ScreenRipper';
 
 
 export const appRegistry = {
@@ -54,6 +54,12 @@ export const appRegistry = {
     icon: RefreshCw,
     title: 'AnySwap | File Conversion Tool',
     name: 'AnySwap'
+  },
+  archive: {
+    Component: ScreenRipper,
+    icon: Record,
+    title: 'Screen Ripper',
+    name: 'Screen Ripper'
   },
   image: {
     Component: ImageViewer,
