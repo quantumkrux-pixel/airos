@@ -1,4 +1,4 @@
-import { FileText, Folder, Palette, MessageSquare, Video, Image, Globe, Play, Calendar as CalendarIcon, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
+import { FileText, Folder, Palette, MessageSquare, Video, Image, Globe, Play, Calendar as CalendarIcon, Slice, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
 import TextEditor from '../components/apps/TextEditor/TextEditor';
 import FileManager from '../components/apps/FileManager/FileManager';
 import ImageViewer from '../components/apps/ImageViewer/ImageViewer';
