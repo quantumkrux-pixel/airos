@@ -5,12 +5,12 @@ import ImageViewer from '../components/apps/ImageViewer/ImageViewer';
 import MediaPlayer from '../components/apps/MediaPlayer/MediaPlayer';
 import { BrowserApp } from '../components/apps/browser/BrowserApp';
 import Calendar from '../components/apps/Calendar/Calendar';
-import Terminal from '../components/apps/Terminal/Terminal';
 import CodeEditor from '../components/apps/CodeEditor/CodeEditor';
 import FileConverter from '../components/apps/FileConverter/FileConverter';
 import { SketchApp } from '../components/apps/Sketch/SketchApp';
 import AirChat from '../components/apps/AirChat/AirChat';
 import ScreenRecorder from '../components/apps/ScreenRipper';
+import VideoEditor from '../components/apps/VideoEditor/VideoEditor'; 
 
 
 export const appRegistry = {
@@ -91,6 +91,12 @@ export const appRegistry = {
     title: 'Terminal',
     name: 'Terminal'
   }
+    videoedit: {
+    Component: VideoEditor,
+    icon: Slice,
+    title: 'Video Editor | Creator Suite',
+    name: 'Video Editor Suite'
+}
 };
 
 export const appCategories = {
@@ -102,7 +108,7 @@ export const appCategories = {
   creativity: {
     name: 'Creativity',
     icon: '🎨',
-    apps: ['image', 'canvas']
+    apps: ['image', 'canvas', 'videoedit']
   },
   developertools: {
     name: 'Developer Tools',
@@ -134,9 +140,9 @@ export const getCategorizedApps = () => {
 
 export const desktopApps = [
   { name: 'File Manager', icon: Folder, app: 'files' },
-  { name: 'KruxBrowser', icon: Globe, app: 'browser' },
+  { name: 'Browser', icon: Globe, app: 'browser' },
   { name: 'Terminal', icon: TerminalIcon, app: 'terminal' },
-  { name: 'Codex', icon: Code2, app: 'code' },
   { name: 'AnySwap', icon: RefreshCw, app: 'fileswap' },
   { name: 'Sketchy', icon: Palette, app: 'canvas' }
+  { name: 'Video Editor', icon: Slice, app: 'videoedit' }
 ];
