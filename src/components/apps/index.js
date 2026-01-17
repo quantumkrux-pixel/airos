@@ -10,3 +10,4 @@ export { default as FileConverter } from './FileConverter/FileConverter';
 export { default as Screen Ripper } from './Screen Ripper';
 export { SketchApp } from './Sketch/SketchApp';
 export { AirChat } from './AirChat/AirChat';
+export { VideoEditor } from './VideoEditor/VideoEditor';
