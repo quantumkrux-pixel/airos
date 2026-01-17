@@ -116,7 +116,10 @@ const VideoEditor = () => {
       opacity: 1,
       effects: [],
       width: mediaInfo.width,
-      height: mediaInfo.height
+      height: mediaInfo.height,
+      reversed: false,
+      mirrorH: false,
+      mirrorV: false
     };
 
     setTracks(tracks.map(track => 
@@ -159,6 +162,42 @@ const VideoEditor = () => {
     ));
   };
 
+  // Toggle clip reversal
+  const toggleReverse = (clip) => {
+    const newReversed = !clip.reversed;
+    setTracks(tracks.map(track => ({
+      ...track,
+      clips: track.clips.map(c => 
+        c.id === clip.id ? { ...c, reversed: newReversed } : c
+      )
+    })));
+    setSelectedClip({ ...clip, reversed: newReversed });
+  };
+
+  // Toggle horizontal mirror
+  const toggleMirrorH = (clip) => {
+    const newMirrorH = !clip.mirrorH;
+    setTracks(tracks.map(track => ({
+      ...track,
+      clips: track.clips.map(c => 
+        c.id === clip.id ? { ...c, mirrorH: newMirrorH } : c
+      )
+    })));
+    setSelectedClip({ ...clip, mirrorH: newMirrorH });
+  };
+
+  // Toggle vertical mirror
+  const toggleMirrorV = (clip) => {
+    const newMirrorV = !clip.mirrorV;
+    setTracks(tracks.map(track => ({
+      ...track,
+      clips: track.clips.map(c => 
+        c.id === clip.id ? { ...c, mirrorV: newMirrorV } : c
+      )
+    })));
+    setSelectedClip({ ...clip, mirrorV: newMirrorV });
+  };
+
   // Split clip at current time
   const splitClip = (trackId, clip) => {
     const splitPoint = project.currentTime - clip.startTime;
@@ -199,7 +238,13 @@ const VideoEditor = () => {
         const clipEnd = clip.startTime + clip.duration;
         
         if (project.currentTime >= clipStart && project.currentTime < clipEnd) {
-          const clipTime = project.currentTime - clipStart + clip.trimStart;
+          let clipTime = project.currentTime - clipStart + clip.trimStart;
+          
+          // If reversed, calculate time from end
+          if (clip.reversed) {
+            const relativeTime = project.currentTime - clipStart;
+            clipTime = clip.trimEnd - relativeTime;
+          }
           
           if (track.type === 'video' || clip.type === 'video' || clip.type === 'image') {
             activeClips.video.push({ ...clip, clipTime, trackMuted: track.muted });
@@ -214,7 +259,7 @@ const VideoEditor = () => {
   };
 
   // Render frame to canvas
-  const renderFrame = async () => {
+  const renderFrame = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -232,29 +277,121 @@ const VideoEditor = () => {
         if (clip.type === 'image') {
           element = new Image();
           element.src = clip.url;
+          element.crossOrigin = 'anonymous';
           videoElementsRef.current[clip.id] = element;
         } else {
           element = document.createElement('video');
           element.src = clip.url;
           element.muted = true;
           element.preload = 'auto';
+          element.crossOrigin = 'anonymous';
+          element.playsInline = true;
           videoElementsRef.current[clip.id] = element;
+          element.load();
         }
       }
       
       if (clip.type === 'video') {
-        element.currentTime = clip.clipTime;
+        // Sync video time when playing
+        if (isPlaying) {
+          if (clip.reversed) {
+            // For reversed playback, manually update time
+            const timeDiff = Math.abs(element.currentTime - clip.clipTime);
+            if (timeDiff > 0.1) {
+              element.currentTime = clip.clipTime;
+            }
+            if (!element.paused) {
+              element.pause();
+            }
+          } else {
+            // Normal forward playback
+            if (element.paused) {
+              element.play().catch(e => console.log('Video play error:', e));
+            }
+          }
+        } else {
+          // When paused, seek to exact position
+          const timeDiff = Math.abs(element.currentTime - clip.clipTime);
+          if (timeDiff > 0.1) {
+            element.currentTime = clip.clipTime;
+          }
+          if (!element.paused) {
+            element.pause();
+          }
+        }
         
-        if (element.readyState >= 2) {
-          ctx.globalAlpha = clip.opacity;
-          ctx.drawImage(element, 0, 0, canvas.width, canvas.height);
-          ctx.globalAlpha = 1;
+        if (element.readyState >= element.HAVE_CURRENT_DATA) {
+          try {
+            ctx.save();
+            
+            // Apply transformations for mirroring
+            let scaleX = 1;
+            let scaleY = 1;
+            let translateX = 0;
+            let translateY = 0;
+            
+            if (clip.mirrorH) {
+              scaleX = -1;
+              translateX = canvas.width;
+            }
+            if (clip.mirrorV) {
+              scaleY = -1;
+              translateY = canvas.height;
+            }
+            
+            // Apply transformations
+            if (translateX !== 0 || translateY !== 0) {
+              ctx.translate(translateX, translateY);
+            }
+            if (scaleX !== 1 || scaleY !== 1) {
+              ctx.scale(scaleX, scaleY);
+            }
+            
+            ctx.globalAlpha = clip.opacity;
+            ctx.drawImage(element, 0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1;
+            
+            ctx.restore();
+          } catch (e) {
+            console.warn('Error drawing video frame:', e);
+          }
         }
       } else if (clip.type === 'image') {
-        if (element.complete) {
-          ctx.globalAlpha = clip.opacity;
-          ctx.drawImage(element, 0, 0, canvas.width, canvas.height);
-          ctx.globalAlpha = 1;
+        if (element.complete && element.naturalWidth > 0) {
+          try {
+            ctx.save();
+            
+            // Apply transformations for mirroring
+            let scaleX = 1;
+            let scaleY = 1;
+            let translateX = 0;
+            let translateY = 0;
+            
+            if (clip.mirrorH) {
+              scaleX = -1;
+              translateX = canvas.width;
+            }
+            if (clip.mirrorV) {
+              scaleY = -1;
+              translateY = canvas.height;
+            }
+            
+            // Apply transformations
+            if (translateX !== 0 || translateY !== 0) {
+              ctx.translate(translateX, translateY);
+            }
+            if (scaleX !== 1 || scaleY !== 1) {
+              ctx.scale(scaleX, scaleY);
+            }
+            
+            ctx.globalAlpha = clip.opacity;
+            ctx.drawImage(element, 0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1;
+            
+            ctx.restore();
+          } catch (e) {
+            console.warn('Error drawing image:', e);
+          }
         }
       }
     }
@@ -266,14 +403,13 @@ const VideoEditor = () => {
       if (!element) {
         element = new Audio(clip.url);
         element.volume = clip.volume * volume * (isMuted || clip.trackMuted ? 0 : 1);
+        element.preload = 'auto';
         audioElementsRef.current[clip.id] = element;
       }
       
+      element.volume = clip.volume * volume * (isMuted || clip.trackMuted ? 0 : 1);
+      
       if (isPlaying && !clip.trackMuted && !isMuted) {
-        const targetTime = clip.clipTime;
-        if (Math.abs(element.currentTime - targetTime) > 0.3) {
-          element.currentTime = targetTime;
-        }
         if (element.paused) {
           element.play().catch(e => console.log('Audio play error:', e));
         }
@@ -313,17 +449,35 @@ const VideoEditor = () => {
         }
       };
     } else {
-      // Pause all audio
+      // Pause all videos and audio
+      Object.values(videoElementsRef.current).forEach(el => {
+        if (el.pause && !el.paused) el.pause();
+      });
       Object.values(audioElementsRef.current).forEach(audio => {
         if (!audio.paused) audio.pause();
       });
     }
   }, [isPlaying, project.duration]);
 
-  // Render frame whenever time changes
+  // Render frame whenever time changes - using RAF for smooth rendering
   useEffect(() => {
-    renderFrame();
-  }, [project.currentTime, tracks, volume, isMuted]);
+    let rafId;
+    
+    const render = () => {
+      renderFrame();
+      if (isPlaying) {
+        rafId = requestAnimationFrame(render);
+      }
+    };
+    
+    render();
+    
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, [tracks, volume, isMuted, isPlaying, project.currentTime]);
 
   // Play/Pause
   const togglePlayback = () => {
@@ -919,14 +1073,48 @@ const VideoEditor = () => {
                             </div>
                           )}
 
+                          {/* Visual indicators for effects */}
                           <div style={{
                             position: 'absolute',
                             bottom: '4px',
                             left: '8px',
-                            fontSize: '10px',
-                            opacity: 0.8
+                            display: 'flex',
+                            gap: '6px',
+                            alignItems: 'center'
                           }}>
-                            {formatTime(clip.duration)}
+                            <span style={{ fontSize: '10px', opacity: 0.8 }}>
+                              {formatTime(clip.duration)}
+                            </span>
+                            {clip.reversed && (
+                              <span style={{ 
+                                fontSize: '10px', 
+                                background: 'rgba(0,0,0,0.5)',
+                                padding: '2px 4px',
+                                borderRadius: '2px'
+                              }}>
+                                ⏮
+                              </span>
+                            )}
+                            {clip.mirrorH && (
+                              <span style={{ 
+                                fontSize: '10px', 
+                                background: 'rgba(0,0,0,0.5)',
+                                padding: '2px 4px',
+                                borderRadius: '2px'
+                              }}>
+                                ↔
+                              </span>
+                            )}
+                            {clip.mirrorV && (
+                              <span style={{ 
+                                fontSize: '10px', 
+                                background: 'rgba(0,0,0,0.5)',
+                                padding: '2px 4px',
+                                borderRadius: '2px'
+                              }}>
+                                ↕
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1064,6 +1252,78 @@ const VideoEditor = () => {
                     Start: {formatTime(selectedClip.startTime)}
                   </div>
                 </div>
+
+                {(selectedClip.type === 'video' || selectedClip.type === 'image') && (
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#999', display: 'block', marginBottom: '10px' }}>
+                      Transform Effects
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <button
+                        onClick={() => toggleReverse(selectedClip)}
+                        style={{
+                          padding: '8px 12px',
+                          background: selectedClip.reversed ? '#3b82f6' : '#2a2a2a',
+                          border: '1px solid #3a3a3a',
+                          borderRadius: '4px',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        <span>⏮</span>
+                        Reverse Playback
+                        {selectedClip.reversed && <span style={{ marginLeft: 'auto', fontSize: '11px' }}>✓</span>}
+                      </button>
+
+                      <button
+                        onClick={() => toggleMirrorH(selectedClip)}
+                        style={{
+                          padding: '8px 12px',
+                          background: selectedClip.mirrorH ? '#3b82f6' : '#2a2a2a',
+                          border: '1px solid #3a3a3a',
+                          borderRadius: '4px',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        <span>↔</span>
+                        Mirror Horizontal
+                        {selectedClip.mirrorH && <span style={{ marginLeft: 'auto', fontSize: '11px' }}>✓</span>}
+                      </button>
+
+                      <button
+                        onClick={() => toggleMirrorV(selectedClip)}
+                        style={{
+                          padding: '8px 12px',
+                          background: selectedClip.mirrorV ? '#3b82f6' : '#2a2a2a',
+                          border: '1px solid #3a3a3a',
+                          borderRadius: '4px',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        <span>↕</span>
+                        Mirror Vertical
+                        {selectedClip.mirrorV && <span style={{ marginLeft: 'auto', fontSize: '11px' }}>✓</span>}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{
