@@ -1,10 +1,12 @@
 {
+  "homepage": "https://Quantumkrux-pixel.github.io/airOS",
   "name": "airos",
   "version": "0.8.0",
   "main": "index.js",
   "author": "Tyler Cooley",
   "dependencies": {
     "20": "^3.1.9",
+    "@auth0/auth0-react": "^2.11.0",
     "@supabase/supabase-js": "^2.89.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -25,6 +27,8 @@
     "webpack-dev-server": "^5.2.2"
   },
   "scripts": {
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
@@ -50,6 +54,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "gh-pages": "^6.3.0"
   }
 }

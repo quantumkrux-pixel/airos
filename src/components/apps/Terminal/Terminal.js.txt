@@ -1,0 +1,842 @@
+// src/components/apps/Terminal/Terminal.js
+import React, { useState, useRef, useEffect } from 'react';
+import { Terminal as TerminalIcon, Lock } from 'lucide-react';
+import { supabase } from '../../../utils/supabase';
+import { initWebContainer, webcontainer } from '../../../webcontainerInstance';
+
+const Terminal = ({
+  fileSystem, 
+  saveFile, 
+  createDirectory, 
+  deleteFile,
+  currentUser,
+  onOpenFile,
+  reloadFileSystem,
+  updateTheme,
+  updateDesktopLayout
+}) => {
+
+  const [history, setHistory] = useState([
+    { type: 'system', content: 'Welcome to AirOS Terminal v2.0' },
+    { type: 'system', content: 'Type "help" for available commands' }
+  ]);
+  const [currentInput, setCurrentInput] = useState('');
+  const [commandHistory, setCommandHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [currentDirectory, setCurrentDirectory] = useState('/');
+  const [sudoMode, setSudoMode] = useState(false);
+  const [awaitingPassword, setAwaitingPassword] = useState(false);
+  const [pendingCommand, setPendingCommand] = useState(null);
+  const [passwordAttempts, setPasswordAttempts] = useState(0);
+
+  // New: process + busy state for WebContainer commands
+  const [currentProcess, setCurrentProcess] = useState(null);
+  const [isBusy, setIsBusy] = useState(false);
+
+  const inputRef = useRef(null);
+  const terminalRef = useRef(null);
+
+console.log('Terminal props:', {
+  fileSystem,
+  hasSaveFile: typeof saveFile === 'function',
+  hasCreateDirectory: typeof createDirectory === 'function',
+  hasDeleteFile: typeof deleteFile === 'function',
+  hasReloadFileSystem: typeof reloadFileSystem === 'function',
+  currentUser
+});
+
+
+
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [history]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const addToHistory = (type, content) => {
+    setHistory(prev => [...prev, { type, content }]);
+  };
+
+  const getPrompt = () => {
+    const user = currentUser?.email?.split('@')[0] || 'user';
+    const prompt = sudoMode ? '#' : '$';
+    return `${user}@airos:${currentDirectory}${prompt}`;
+  };
+
+  const resolvePath = (path) => {
+    if (!path) return currentDirectory;
+    if (path.startsWith('/')) return path;
+    if (path === '..') {
+      if (currentDirectory === '/') return '/';
+      const parts = currentDirectory.split('/').filter(Boolean);
+      parts.pop();
+      return '/' + parts.join('/');
+    }
+    if (path === '.') return currentDirectory;
+    if (currentDirectory === '/') return `/${path}`;
+    return `${currentDirectory}/${path}`;
+  };
+
+  const verifyPassword = async (password) => {
+    try {
+      const email = currentUser?.email;
+      if (!email) return false;
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      return !error;
+    } catch (error) {
+      console.error('Password verification error:', error);
+      return false;
+    }
+  };
+
+  const handlePasswordSubmit = async (password) => {
+    const isValid = await verifyPassword(password);
+    
+    if (isValid) {
+      setPasswordAttempts(0);
+      
+      if (pendingCommand === 'sudo su') {
+        setSudoMode(true);
+        addToHistory('system', 'Elevated privileges granted. Type "exit su" to exit sudo mode.');
+      } else if (pendingCommand) {
+        addToHistory('system', '[sudo] password accepted');
+        const tempSudo = sudoMode;
+        setSudoMode(true);
+        await executeCommandInternal(pendingCommand);
+        setSudoMode(tempSudo);
+      }
+      
+      setAwaitingPassword(false);
+      setPendingCommand(null);
+    } else {
+      setPasswordAttempts(prev => prev + 1);
+      
+      if (passwordAttempts >= 2) {
+        addToHistory('error', 'sudo: 3 incorrect password attempts');
+        setAwaitingPassword(false);
+        setPendingCommand(null);
+        setPasswordAttempts(0);
+      } else {
+        addToHistory('error', 'Sorry, try again.');
+        addToHistory(
+          'command',
+          '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':'
+        );
+      }
+    }
+  };
+
+  const copyFile = async (sourcePath, destPath) => {
+    const source = fileSystem[sourcePath];
+    if (!source) return false;
+    
+    if (source.type === 'directory') {
+      await createDirectory(
+        destPath.substring(0, destPath.lastIndexOf('/')), 
+        destPath.substring(destPath.lastIndexOf('/') + 1)
+      );
+      const children = source.children || [];
+      for (const child of children) {
+        const childSourcePath = `${sourcePath}/${child}`;
+        const childDestPath = `${destPath}/${child}`;
+        await copyFile(childSourcePath, childDestPath);
+      }
+    } else {
+      await saveFile(destPath, source.content || '', 'file');
+    }
+    return true;
+  };
+
+  // New: stream WebContainer process output into terminal history
+  const streamProcessOutput = async (process) => {
+    try {
+      const output = process.output;
+      const writer = new WritableStream({
+        write(data) {
+          if (data) addToHistory('output', data);
+        }
+      });
+      await output.pipeTo(writer);
+    } catch (e) {
+      // ignore stream errors; process exit will still be handled
+    }
+  };
+  const executeCommandInternal = async (cmd) => {
+    const parts = cmd.split(' ');
+    const command = parts[0].toLowerCase();
+    const args = parts.slice(1);
+
+    switch (command) {
+      case 'theme':
+        if (!sudoMode) {
+          addToHistory('error', 'Permission denied. Use: sudo theme <name>');
+        } else if (!args[0]) {
+          addToHistory(
+            'error',
+            'theme: missing theme name. Available: default, sunset, scorpio, dragonfruit, ocean, volcanic, lavender'
+          );
+        } else {
+          const themes = [
+            'default',
+            'sunset',
+            'scorpio',
+            'dragonfruit',
+            'ocean',
+            'volcanic',
+            'lavender'
+          ];
+          if (themes.includes(args[0])) {
+            updateTheme(args[0]);
+            addToHistory('system', `Theme changed to: ${args[0]}`);
+          } else {
+            addToHistory('error', `theme: unknown theme '${args[0]}'`);
+          }
+        }
+        break;
+
+      case 'layout':
+        if (!sudoMode) {
+          addToHistory('error', 'Permission denied. Use: sudo layout <type>');
+        } else if (!args[0]) {
+          addToHistory('error', 'layout: missing layout type. Available: wheel, grid');
+        } else {
+          if (args[0] === 'wheel' || args[0] === 'grid') {
+            updateDesktopLayout(args[0]);
+            addToHistory('system', `Desktop layout changed to: ${args[0]}`);
+          } else {
+            addToHistory('error', `layout: unknown layout '${args[0]}'`);
+          }
+        }
+        break;
+
+	case 'wc':
+  if (!args[0]) {
+    addToHistory('error', 'wc: missing subcommand. Try: wc init');
+    break;
+  }
+
+  if (args[0] === 'init') {
+    try {
+      const wc = await initWebContainer();
+      addToHistory('system', 'WebContainer initialized successfully.');
+    } catch (err) {
+      addToHistory('error', `WebContainer init failed: ${err.message}`);
+    }
+    break;
+  }
+
+  addToHistory('error', `wc: unknown subcommand '${args[0]}'`);
+  break;
+
+      case 'mv':
+        if (args.length < 2) {
+          addToHistory('error', 'mv: missing operands. Usage: mv <source> <destination>');
+        } else {
+          const srcPath = resolvePath(args[0]);
+          const destPath = resolvePath(args[1]);
+          
+          if (!fileSystem[srcPath]) {
+            addToHistory('error', `mv: ${args[0]}: No such file or directory`);
+          } else if (fileSystem[destPath]) {
+            addToHistory('error', `mv: ${args[1]}: Destination already exists`);
+          } else {
+            await copyFile(srcPath, destPath);
+            deleteFile(srcPath);
+            addToHistory('output', '');
+          }
+        }
+        break;
+
+      case 'cp':
+        if (args.length < 2) {
+          addToHistory('error', 'cp: missing operands. Usage: cp <source> <destination>');
+        } else {
+          const srcPath = resolvePath(args[0]);
+          const destPath = resolvePath(args[1]);
+          
+          if (!fileSystem[srcPath]) {
+            addToHistory('error', `cp: ${args[0]}: No such file or directory`);
+          } else if (fileSystem[destPath]) {
+            addToHistory('error', `cp: ${args[1]}: Destination already exists`);
+          } else {
+            await copyFile(srcPath, destPath);
+            addToHistory('output', '');
+          }
+        }
+        break;
+
+      case 'find':
+        if (!args[0]) {
+          addToHistory('error', 'find: missing search term');
+        } else {
+          const searchTerm = args[0].toLowerCase();
+          const results = [];
+          
+          const searchDir = (path) => {
+            const dir = fileSystem[path];
+            if (!dir || !dir.children) return;
+            
+            dir.children.forEach(child => {
+              const fullPath = path === '/' ? `/${child}` : `${path}/${child}`;
+              if (child.toLowerCase().includes(searchTerm)) {
+                const isDir = fileSystem[fullPath]?.type === 'directory';
+                results.push(`${isDir ? '📁' : '📄'} ${fullPath}`);
+              }
+              if (fileSystem[fullPath]?.type === 'directory') {
+                searchDir(fullPath);
+              }
+            });
+          };
+          
+          searchDir('/');
+          
+          if (results.length === 0) {
+            addToHistory('output', `No results found for '${args[0]}'`);
+          } else {
+            addToHistory(
+              'output',
+              `Found ${results.length} result(s):\n${results.join('\n')}`
+            );
+          }
+        }
+        break;
+
+      case 'grep':
+        if (args.length < 2) {
+          addToHistory('error', 'grep: missing operands. Usage: grep <pattern> <file>');
+        } else {
+          const pattern = args[0].toLowerCase();
+          const filePath = resolvePath(args[1]);
+          
+          if (!fileSystem[filePath]) {
+            addToHistory('error', `grep: ${args[1]}: No such file`);
+          } else if (fileSystem[filePath].type === 'directory') {
+            addToHistory('error', `grep: ${args[1]}: Is a directory`);
+          } else {
+            const content = fileSystem[filePath].content || '';
+            if (content.startsWith('data:')) {
+              addToHistory('error', 'grep: cannot search binary files');
+            } else {
+              const lines = content.split('\n');
+              const matches = lines
+                .map((line, i) => ({ line, num: i + 1 }))
+                .filter(({ line }) => line.toLowerCase().includes(pattern));
+              
+              if (matches.length === 0) {
+                addToHistory('output', `No matches found for '${args[0]}'`);
+              } else {
+                const output = matches
+                  .map(({ line, num }) => `${num}: ${line}`)
+                  .join('\n');
+                addToHistory('output', output);
+              }
+            }
+          }
+        }
+        break;
+
+      case 'ls': {
+        const lsPath = args[0] ? resolvePath(args[0]) : currentDirectory;
+        if (!fileSystem[lsPath]) {
+          addToHistory('error', `ls: ${lsPath}: No such directory`);
+        } else if (fileSystem[lsPath].type !== 'directory') {
+          addToHistory('error', `ls: ${lsPath}: Not a directory`);
+        } else {
+          const items = fileSystem[lsPath].children || [];
+          if (items.length === 0) {
+            addToHistory('output', '(empty directory)');
+          } else {
+            const itemsWithTypes = items.map(item => {
+              const fullPath = lsPath === '/' ? `/${item}` : `${lsPath}/${item}`;
+              const isDir = fileSystem[fullPath]?.type === 'directory';
+              return isDir ? `📁 ${item}/` : `📄 ${item}`;
+            });
+            addToHistory('output', itemsWithTypes.join('\n'));
+          }
+        }
+        break;
+      }
+
+      case 'cd':
+        if (!args[0]) {
+          setCurrentDirectory('/');
+          addToHistory('output', '');
+        } else {
+          const newPath = resolvePath(args[0]);
+          if (!fileSystem[newPath]) {
+            addToHistory('error', `cd: ${args[0]}: No such directory`);
+          } else if (fileSystem[newPath].type !== 'directory') {
+            addToHistory('error', `cd: ${args[0]}: Not a directory`);
+          } else {
+            setCurrentDirectory(newPath);
+            addToHistory('output', '');
+          }
+        }
+        break;
+
+      case 'pwd':
+        addToHistory('output', currentDirectory);
+        break;
+
+      case 'cat':
+        if (!args[0]) {
+          addToHistory('error', 'cat: missing file operand');
+        } else {
+          const catPath = resolvePath(args[0]);
+          if (!fileSystem[catPath]) {
+            addToHistory('error', `cat: ${args[0]}: No such file`);
+          } else if (fileSystem[catPath].type === 'directory') {
+            addToHistory('error', `cat: ${args[0]}: Is a directory`);
+          } else {
+            const content = fileSystem[catPath].content || '(empty file)';
+            if (content.startsWith('data:image')) {
+              addToHistory('output', `[Image file - ${content.length} bytes]`);
+            } else if (content.startsWith('data:')) {
+              addToHistory('output', `[Binary file - ${content.length} bytes]`);
+            } else {
+              addToHistory('output', content);
+            }
+          }
+        }
+        break;
+
+      case 'mkdir':
+        if (!args[0]) {
+          addToHistory('error', 'mkdir: missing directory name');
+        } else {
+          const mkdirPath = resolvePath(args[0]);
+          if (fileSystem[mkdirPath]) {
+            addToHistory('error', `mkdir: ${args[0]}: File exists`);
+          } else {
+            createDirectory(currentDirectory, args[0]);
+            addToHistory('output', '');
+          }
+        }
+        break;
+
+      case 'touch':
+        if (!args[0]) {
+          addToHistory('error', 'touch: missing file name');
+        } else {
+          const touchPath = resolvePath(args[0]);
+          if (fileSystem[touchPath]) {
+            addToHistory('output', '');
+          } else {
+            saveFile(touchPath, '', 'file');
+            addToHistory('output', '');
+          }
+        }
+        break;
+
+      case 'rm':
+        if (!args[0]) {
+          addToHistory('error', 'rm: missing operand');
+        } else {
+          const rmPath = resolvePath(args[0]);
+          if (!fileSystem[rmPath]) {
+            addToHistory('error', `rm: ${args[0]}: No such file or directory`);
+          } else {
+            deleteFile(rmPath);
+            addToHistory('output', '');
+          }
+        }
+        break;
+
+      case 'echo':
+        addToHistory('output', args.join(' '));
+        break;
+
+      case 'open':
+        if (!args[0]) {
+          addToHistory('error', 'open: missing file operand');
+        } else {
+          const openPath = resolvePath(args[0]);
+          if (!fileSystem[openPath]) {
+            addToHistory('error', `open: ${args[0]}: No such file`);
+          } else if (fileSystem[openPath].type === 'directory') {
+            addToHistory('error', `open: ${args[0]}: Is a directory`);
+          } else {
+            onOpenFile(args[0], openPath);
+            addToHistory('output', `Opening ${args[0]}...`);
+          }
+        }
+        break;
+
+      case 'tree': {
+        const buildTree = (path, prefix = '', isLast = true) => {
+          const items = fileSystem[path]?.children || [];
+          let result = [];
+          
+          items.forEach((item, index) => {
+            const isLastItem = index === items.length - 1;
+            const fullPath = path === '/' ? `/${item}` : `${path}/${item}`;
+            const isDir = fileSystem[fullPath]?.type === 'directory';
+            const connector = isLastItem ? '└── ' : '├── ';
+            const icon = isDir ? '📁' : '📄';
+            
+            result.push(`${prefix}${connector}${icon} ${item}`);
+            
+            if (isDir) {
+              const newPrefix = prefix + (isLastItem ? '    ' : '│   ');
+              result = result.concat(buildTree(fullPath, newPrefix, isLastItem));
+            }
+          });
+          
+          return result;
+        };
+        
+        const treeOutput = ['📁 ' + currentDirectory, ...buildTree(currentDirectory)];
+        addToHistory('output', treeOutput.join('\n'));
+        break;
+      }
+
+      case 'whoami':
+        addToHistory('output', currentUser?.email || 'guest');
+        break;
+
+      case 'date':
+        addToHistory('output', new Date().toString());
+        break;
+
+      case 'calc':
+        if (!args[0]) {
+          addToHistory('error', 'calc: missing expression');
+        } else {
+          try {
+            const expression = args.join(' ');
+            // eslint-disable-next-line no-new-func
+            const result = Function('"use strict"; return (' + expression + ')')();
+            addToHistory('output', `${expression} = ${result}`);
+          } catch {
+            addToHistory('error', 'calc: invalid expression');
+          }
+        }
+        break;
+
+      case 'clear':
+        setHistory([]);
+        break;
+
+      // New: kill current WebContainer process
+      case 'kill':
+        if (!currentProcess) {
+          addToHistory('error', 'No running process');
+        } else {
+          try {
+            currentProcess.kill();
+            addToHistory('system', 'Process terminated');
+          } catch (e) {
+            addToHistory('error', `kill: ${e.message || e}`);
+          }
+          setCurrentProcess(null);
+          setIsBusy(false);
+        }
+        break;
+
+      // New: npm support via WebContainer
+      case 'npm':
+        if (!args.length) {
+          addToHistory('error', 'npm: missing arguments');
+          break;
+        }
+        if (!webcontainer) {
+          addToHistory('error', 'WebContainer is not initialized');
+          break;
+        }
+        try {
+          setIsBusy(true);
+          const proc = await webcontainer.spawn('npm', args);
+          setCurrentProcess(proc);
+
+          streamProcessOutput(proc);
+
+          const isLongRunning =
+            args[0] === 'run' &&
+            args[1] &&
+            (args[1].includes('dev') || args[1].includes('start'));
+
+          if (!isLongRunning) {
+            const exitCode = await proc.exit;
+            addToHistory('system', `npm exited with code ${exitCode}`);
+            setCurrentProcess(null);
+            setIsBusy(false);
+            reloadFileSystem?.();
+          } else {
+            addToHistory('system', '(process running — use "kill" to stop)');
+          }
+        } catch (e) {
+          addToHistory('error', `npm error: ${e.message || e}`);
+          setCurrentProcess(null);
+          setIsBusy(false);
+        }
+        break;
+
+      case 'help':
+        addToHistory('output', `Available commands:
+  
+File System:
+  ls [path]            - List directory contents
+  cd <path>            - Change directory
+  pwd                  - Print working directory
+  tree                 - Display directory tree
+  
+File Operations:
+  cat <file>           - Display file contents
+  touch <name>         - Create a new file
+  mkdir <name>         - Create a new directory
+  rm <path>            - Remove file/directory
+  mv <src> <dest>      - Move or rename file/directory
+  cp <src> <dest>      - Copy file/directory
+  find <name>          - Search for files/directories
+  grep <text> <file>   - Search for text in file
+  
+Utilities:
+  echo <text>          - Print text to terminal
+  open <file>          - Open file in app
+  calc <expression>    - Calculate math
+  whoami               - Display current user
+  date                 - Display date and time
+  clear                - Clear the terminal
+  
+System Administration:
+  sudo <command>       - Execute command with admin privileges
+  sudo su              - Enter persistent sudo mode
+  exit su              - Exit persistent sudo mode
+  
+System Commands (require sudo):
+  theme <name>         - Change desktop theme
+  layout <type>        - Change desktop layout (wheel/grid)
+  
+WebContainer:
+  npm <args>           - Run npm inside WebContainer
+  kill                 - Kill current npm/dev process`);
+        break;
+
+      default:
+        addToHistory(
+          'error',
+          `${command}: command not found. Type 'help' for available commands.`
+        );
+    }
+  };
+  const executeCommand = async (cmd) => {
+    const trimmedCmd = cmd.trim();
+    if (!trimmedCmd) return;
+
+    setCommandHistory(prev => [...prev, trimmedCmd]);
+    setHistoryIndex(-1);
+    addToHistory('command', `${getPrompt()} ${trimmedCmd}`);
+
+    const parts = trimmedCmd.split(' ');
+    const command = parts[0].toLowerCase();
+    const args = parts.slice(1);
+
+    // Handle sudo commands
+    if (command === 'sudo') {
+      if (args.length === 0) {
+        addToHistory('error', 'sudo: missing command. Usage: sudo <command> or sudo su');
+        return;
+      }
+
+      const sudoCommand = args.join(' ');
+      
+      if (sudoCommand === 'su') {
+        addToHistory(
+          'command',
+          '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':'
+        );
+        setAwaitingPassword(true);
+        setPendingCommand('sudo su');
+        return;
+      } else {
+        addToHistory(
+          'command',
+          '[sudo] password for ' + (currentUser?.email?.split('@')[0] || 'user') + ':'
+        );
+        setAwaitingPassword(true);
+        setPendingCommand(sudoCommand);
+        return;
+      }
+    }
+
+    // Handle exit su
+    if (sudoMode && trimmedCmd === 'exit su') {
+      setSudoMode(false);
+      addToHistory('system', 'Exited sudo mode');
+      return;
+    }
+
+    await executeCommandInternal(trimmedCmd);
+    setCurrentInput('');
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (awaitingPassword) {
+        handlePasswordSubmit(currentInput);
+        setCurrentInput('');
+      } else {
+        executeCommand(currentInput);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!awaitingPassword && commandHistory.length > 0) {
+        const newIndex = historyIndex === -1 
+          ? commandHistory.length - 1 
+          : Math.max(0, historyIndex - 1);
+        setHistoryIndex(newIndex);
+        setCurrentInput(commandHistory[newIndex]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!awaitingPassword && historyIndex !== -1) {
+        const newIndex = historyIndex + 1;
+        if (newIndex >= commandHistory.length) {
+          setHistoryIndex(-1);
+          setCurrentInput('');
+        } else {
+          setHistoryIndex(newIndex);
+          setCurrentInput(commandHistory[newIndex]);
+        }
+      }
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      if (!awaitingPassword) {
+        const parts = currentInput.split(' ');
+        const lastPart = parts[parts.length - 1];
+        
+        if (lastPart) {
+          const items = fileSystem[currentDirectory]?.children || [];
+          const matches = items.filter(item => item.startsWith(lastPart));
+          
+          if (matches.length === 1) {
+            parts[parts.length - 1] = matches[0];
+            setCurrentInput(parts.join(' '));
+          } else if (matches.length > 1) {
+            addToHistory('output', matches.join('  '));
+          }
+        }
+      }
+    } else if (e.key === 'l' && e.ctrlKey) {
+      e.preventDefault();
+      setHistory([]);
+    } else if (e.key === 'c' && e.ctrlKey) {
+      if (awaitingPassword) {
+        e.preventDefault();
+        addToHistory('system', '^C');
+        setAwaitingPassword(false);
+        setPendingCommand(null);
+        setPasswordAttempts(0);
+        setCurrentInput('');
+      } else if (currentProcess) {
+        e.preventDefault();
+        currentProcess.kill();
+        addToHistory('system', '^C (process terminated)');
+        setCurrentProcess(null);
+        setIsBusy(false);
+      }
+    }
+  };
+
+  return (
+    <div 
+      style={{
+        height: '100%',
+        background: '#1a1a1a',
+        color: '#00ff00',
+        fontFamily: '"Courier New", Courier, monospace',
+        fontSize: '14px',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+      }}
+      onClick={() => inputRef.current?.focus()}
+    >
+      <div style={{
+        padding: '8px 12px',
+        background: sudoMode ? '#8b0000' : '#0d0d0d',
+        borderBottom: '1px solid #333',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: '#888',
+        transition: 'background 0.3s'
+      }}>
+        {sudoMode ? <Lock size={16} color="#ff0000" /> : <TerminalIcon size={16} />}
+        <span style={{ fontSize: '13px', color: sudoMode ? '#ff0000' : '#888' }}>
+          AirOS Terminal {sudoMode && '(ROOT)'}
+        </span>
+        <span style={{ marginLeft: 'auto', fontSize: '11px' }}>
+          {awaitingPassword
+            ? 'Enter password'
+            : isBusy
+              ? 'Running process...'
+              : 'Ctrl+L to clear'}
+        </span>
+      </div>
+
+      <div
+        ref={terminalRef}
+        style={{
+          flex: 1,
+          padding: '12px',
+          overflow: 'auto',
+          lineHeight: '1.5'
+        }}
+      >
+        {history.map((entry, index) => (
+          <div
+            key={index}
+            style={{
+              color: entry.type === 'error' ? '#ff5555' : 
+                     entry.type === 'command' ? '#ffff00' : 
+                     entry.type === 'system' ? '#00ffff' : '#00ff00',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              marginBottom: entry.type === 'output' ? '8px' : '0'
+            }}
+          >
+            {entry.content}
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', color: sudoMode ? '#ff0000' : '#ffff00' }}>
+          <span style={{ marginRight: '8px' }}>
+            {awaitingPassword ? '' : getPrompt()}
+          </span>
+          <input
+            ref={inputRef}
+            type={awaitingPassword ? 'password' : 'text'}
+            value={currentInput}
+            onChange={(e) => setCurrentInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: awaitingPassword ? '#ffff00' : '#00ff00',
+              fontFamily: 'inherit',
+              fontSize: 'inherit',
+              caretColor: sudoMode ? '#ff0000' : '#00ff00'
+            }}
+            spellCheck={false}
+            autoComplete="off"
+            placeholder={awaitingPassword ? '••••••••' : ''}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Terminal;
