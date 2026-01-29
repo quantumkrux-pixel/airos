@@ -1,13 +1,16 @@
 {
   "files": {
-    "main.js": "/airos/static/js/main.1ce42872.js",
+    "main.css": "/airos/static/css/main.8ae510b3.css",
+    "main.js": "/airos/static/js/main.67d822c8.js",
     "static/js/453.eadda7e2.chunk.js": "/airos/static/js/453.eadda7e2.chunk.js",
     "static/media/AOSLogo.png": "/airos/static/media/AOSLogo.4091930689dd75d464d2.png",
     "index.html": "/airos/index.html",
-    "main.1ce42872.js.map": "/airos/static/js/main.1ce42872.js.map",
+    "main.8ae510b3.css.map": "/airos/static/css/main.8ae510b3.css.map",
+    "main.67d822c8.js.map": "/airos/static/js/main.67d822c8.js.map",
     "453.eadda7e2.chunk.js.map": "/airos/static/js/453.eadda7e2.chunk.js.map"
   },
   "entrypoints": [
-    "static/js/main.1ce42872.js"
+    "static/css/main.8ae510b3.css",
+    "static/js/main.67d822c8.js"
   ]
 }
