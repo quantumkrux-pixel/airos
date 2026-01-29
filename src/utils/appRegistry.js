@@ -1,4 +1,4 @@
-import { FileText, Folder, Palette, MessageSquare, Slice, Image, Globe, Play, Calendar as CalendarIcon, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
+import { FileText, Folder, Palette, MessageSquare, Slice, ChessRook, Image, Globe, Play, SquareGanttChartIcon, Calendar as CalendarIcon, Terminal as TerminalIcon, Code2, RefreshCw } from 'lucide-react';
 import TextEditor from '../components/apps/TextEditor/TextEditor';
 import FileManager from '../components/apps/FileManager/FileManager';
 import ImageViewer from '../components/apps/ImageViewer/ImageViewer';
@@ -9,16 +9,34 @@ import Terminal from '../components/apps/Terminal/Terminal';
 import CodeEditor from '../components/apps/CodeEditor/CodeEditor';
 import FileConverter from '../components/apps/FileConverter/FileConverter';
 import { SketchApp } from '../components/apps/Sketch/SketchApp';
-import AirChat from '../components/apps/AirChat/AirChat';
+import Breeze from '../components/apps/Breeze/Breeze';
 import VideoEditor from '../components/apps/VideoEditor/VideoEditor';
-
+import ScreenRipper from '../components/apps/ScreenRipper';
+import SpreadSheet from '../components/apps/SpreadSheet/SpreadSheet';
+import ChessApp from '../components/apps/Chess/ChessApp';
 
 export const appRegistry = {
-  code: {
+  Chess: {
+    Component: ChessApp,
+    icon: ChessRook,
+    title: 'Chess',
+    name: 'Chess',
+    defaultSize: { minwidth: 1200, minheight: 1400 },
+    resizable: false
+  },
+  Codex: {
     Component: CodeEditor,
     icon: Code2,
     title: 'Codex | IDE',
     name: 'Codex',
+    defaultSize: { minwidth: 1800, minheight: 1600 },
+    resizable: true
+  },
+  spreadsheet: {
+    Component: SpreadSheet,
+    icon: SquareGanttChartIcon,
+    title: 'X-Cells | SpreadSheets',
+    name: 'X-Cells',
     defaultSize: { minwidth: 1800, minheight: 1600 },
     resizable: true
   },
@@ -37,23 +55,23 @@ export const appRegistry = {
     title: 'AirWrite | Rich Text Editing',
     name: 'AirWrite'
   },
-  chat: {
-    Component: AirChat,
+  Breeze: {
+    Component: Breeze,
     icon: MessageSquare,
-    title: 'AirChat | Messaging and Circles',
-    name: 'AirChat'
+    title: 'Breeze | Messaging and Circles',
+    name: 'Breeze'
   },
-  files: {
+  FileManager: {
     Component: FileManager,
     icon: Folder,
     title: 'File Manager',
     name: 'File Manager'
   },
-  fileswap: {
+  Converter: {
     Component: FileConverter,
     icon: RefreshCw,
-    title: 'AnySwap | File Conversion Tool',
-    name: 'AnySwap'
+    title: 'File Crucible | Converter Utility',
+    name: 'File Crucible'
   },
   image: {
     Component: ImageViewer,
@@ -67,29 +85,35 @@ export const appRegistry = {
     title: 'AirStream Media Player',
     name: 'Airstream Player'
   },
-  video: {
+  ReelSmith: {
     Component: VideoEditor,
     icon: Slice,
-    title: 'Video Editor | AirOS Creator Suite',
-    name: 'Video Editor'
+    title: 'ReelSmith | Video Editor',
+    name: 'ReelSmith'
   },
-  browser: {
+  Browser: {
     Component: BrowserApp,
     icon: Globe,
     title: 'Browser',
     name: 'Browser'
   },
-  calendar: {
+  Calendar: {
     Component: Calendar,
     icon: CalendarIcon,
     title: 'Calendar',
     name: 'Calendar'
   },
-  terminal: {
+  Terminal: {
     Component: Terminal,
     icon: TerminalIcon,
     title: 'Terminal',
     name: 'Terminal'
+  },
+  ScreenRecord: {
+    Component: ScreenRipper,
+    icon: Play,
+    title: 'Screen Ripper',
+    name: 'Screen Ripper'
   }
 };
 
@@ -97,22 +121,22 @@ export const appCategories = {
   productivity: {
     name: 'Productivity',
     icon: '💼',
-    apps: ['text', 'files', 'fileswap', 'calendar', 'terminal', 'chat']
+    apps: ['text', 'FileManager', 'Converter', 'Calendar', 'spreadsheet', 'Breeze']
   },
   creativity: {
-    name: 'Creativity',
+    name: 'Create',
     icon: '🎨',
-    apps: ['image', 'video', 'canvas']
+    apps: ['image', 'video', 'ReelSmith', 'canvas', 'text']
   },
   developertools: {
     name: 'Developer Tools',
     icon: '###',
-    apps: ['code', 'terminal']
+    apps: ['Codex', 'Terminal']
   },
   entertainment: {
     name: 'Entertainment',
     icon: '🎮',
-    apps: ['video', 'browser']
+    apps: ['video', 'Browser', 'ScreenRecord', 'Chess']
   }
 };
 
@@ -133,12 +157,10 @@ export const getCategorizedApps = () => {
 };
 
 export const desktopApps = [
-  { name: 'Sketchy', icon: Palette, app: 'canvas' },
-  { name: 'File Manager', icon: Folder, app: 'files' },
-  { name: 'Video Editor', icon: Slice, app: 'video' },
-  { name: 'AirChat', icon: MessageSquare, app: 'chat' },
-  { name: 'Browser', icon: Globe, app: 'browser' },
-  { name: 'Terminal', icon: TerminalIcon, app: 'terminal' },
-  { name: 'Codex', icon: Code2, app: 'code' },
-  { name: 'AnySwap', icon: RefreshCw, app: 'fileswap' }
+  { name: 'File Manager', icon: Folder, app: 'FileManager' },
+  { name: 'ReelSmith', icon: Slice, app: 'ReelSmith' },
+  { name: 'Terminal', icon: TerminalIcon, app: 'Terminal' },
+  { name: 'Codex', icon: Code2, app: 'Codex' },
+  { name: 'File Crucible', icon: RefreshCw, app: 'Converter' },
+
 ];

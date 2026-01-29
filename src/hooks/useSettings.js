@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../utils/supabase'; // adjust path as needed
 
 export const useSettings = (userId) => {
   const [theme, setTheme] = useState('default');
@@ -12,111 +13,122 @@ export const useSettings = (userId) => {
   const [notifications, setNotifications] = useState(true);
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const [defaultFileView, setDefaultFileView] = useState('grid');
+
+  // ⭐ NEW
+  const [showTipsWidget, setShowTipsWidget] = useState(true);
+
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load settings from localStorage on mount
-  useEffect(() => {
-    if (userId) {
-      const savedSettings = localStorage.getItem(`settings_${userId}`);
-      if (savedSettings) {
-        try {
-          const settings = JSON.parse(savedSettings);
-          setTheme(settings.theme || 'default');
-          setDesktopLayout(settings.desktopLayout || 'wheel');
-          setDisplayName(settings.displayName || '');
-          setAvatarColor(settings.avatarColor || '#3b82f6');
-          setFontSize(settings.fontSize || 'medium');
-          setTerminalTheme(settings.terminalTheme || 'classic');
-          setShowWelcome(settings.showWelcome !== false);
-          setAutoSave(settings.autoSave !== false);
-          setNotifications(settings.notifications !== false);
-          setAnimationsEnabled(settings.animationsEnabled !== false);
-          setDefaultFileView(settings.defaultFileView || 'grid');
-        } catch (error) {
-          console.error('Error loading settings:', error);
-        }
-      }
+  // -----------------------------
+  // Load settings from Supabase
+  // -----------------------------
+  const loadSettingsFromSupabase = async () => {
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('settings')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.warn('No remote settings found, using defaults.');
       setIsLoading(false);
+      return;
     }
+
+    const s = data.settings || {};
+
+    setTheme(s.theme ?? 'default');
+    setDesktopLayout(s.desktopLayout ?? 'wheel');
+    setDisplayName(s.displayName ?? '');
+    setAvatarColor(s.avatarColor ?? '#3b82f6');
+    setFontSize(s.fontSize ?? 'medium');
+    setTerminalTheme(s.terminalTheme ?? 'classic');
+    setShowWelcome(s.showWelcome ?? true);
+    setAutoSave(s.autoSave ?? true);
+    setNotifications(s.notifications ?? true);
+    setAnimationsEnabled(s.animationsEnabled ?? true);
+    setDefaultFileView(s.defaultFileView ?? 'grid');
+    setShowTipsWidget(s.showTipsWidget ?? true);
+
+    setIsLoading(false);
+  };
+
+  // -----------------------------
+  // Save settings to Supabase
+  // -----------------------------
+  const saveSettingsToSupabase = async (settingsObj) => {
+    await supabase
+      .from('user_settings')
+      .upsert({
+        id: userId,
+        settings: settingsObj,
+        updated_at: new Date()
+      });
+  };
+
+  // -----------------------------
+  // Load on mount
+  // -----------------------------
+  useEffect(() => {
+    if (userId) loadSettingsFromSupabase();
   }, [userId]);
 
-  // Save settings to localStorage whenever they change
+  // -----------------------------
+  // Save whenever settings change
+  // -----------------------------
   useEffect(() => {
-    if (userId && !isLoading) {
-      const settings = {
-        theme,
-        desktopLayout,
-        displayName,
-        avatarColor,
-        fontSize,
-        terminalTheme,
-        showWelcome,
-        autoSave,
-        notifications,
-        animationsEnabled,
-        defaultFileView
-      };
-      localStorage.setItem(`settings_${userId}`, JSON.stringify(settings));
-    }
+    if (!userId || isLoading) return;
+
+    const settingsObj = {
+      theme,
+      desktopLayout,
+      displayName,
+      avatarColor,
+      fontSize,
+      terminalTheme,
+      showWelcome,
+      autoSave,
+      notifications,
+      animationsEnabled,
+      defaultFileView,
+      showTipsWidget
+    };
+
+    saveSettingsToSupabase(settingsObj);
   }, [
-    theme, 
-    desktopLayout, 
-    displayName, 
-    avatarColor, 
-    fontSize, 
+    theme,
+    desktopLayout,
+    displayName,
+    avatarColor,
+    fontSize,
     terminalTheme,
     showWelcome,
     autoSave,
     notifications,
     animationsEnabled,
     defaultFileView,
-    userId, 
+    showTipsWidget,
+    userId,
     isLoading
   ]);
 
-  const updateTheme = (newTheme) => {
-    setTheme(newTheme);
-  };
+  // -----------------------------
+  // Update functions
+  // -----------------------------
+  const updateTheme = (v) => setTheme(v);
+  const updateDesktopLayout = (v) => setDesktopLayout(v);
+  const updateDisplayName = (v) => setDisplayName(v);
+  const updateAvatarColor = (v) => setAvatarColor(v);
+  const updateFontSize = (v) => setFontSize(v);
+  const updateTerminalTheme = (v) => setTerminalTheme(v);
+  const updateShowWelcome = (v) => setShowWelcome(v);
+  const updateAutoSave = (v) => setAutoSave(v);
+  const updateNotifications = (v) => setNotifications(v);
+  const updateAnimationsEnabled = (v) => setAnimationsEnabled(v);
+  const updateDefaultFileView = (v) => setDefaultFileView(v);
 
-  const updateDesktopLayout = (layout) => {
-    setDesktopLayout(layout);
-  };
-
-  const updateDisplayName = (name) => {
-    setDisplayName(name);
-  };
-
-  const updateAvatarColor = (color) => {
-    setAvatarColor(color);
-  };
-
-  const updateFontSize = (size) => {
-    setFontSize(size);
-  };
-
-  const updateTerminalTheme = (theme) => {
-    setTerminalTheme(theme);
-  };
-
-  const updateShowWelcome = (show) => {
-    setShowWelcome(show);
-  };
-
-  const updateAutoSave = (enabled) => {
-    setAutoSave(enabled);
-  };
-
-  const updateNotifications = (enabled) => {
-    setNotifications(enabled);
-  };
-
-  const updateAnimationsEnabled = (enabled) => {
-    setAnimationsEnabled(enabled);
-  };
-
-  const updateDefaultFileView = (view) => {
-    setDefaultFileView(view);
-  };
+  // ⭐ NEW
+  const updateShowTipsWidget = (v) => setShowTipsWidget(v);
 
   return {
     theme,
@@ -130,6 +142,8 @@ export const useSettings = (userId) => {
     notifications,
     animationsEnabled,
     defaultFileView,
+    showTipsWidget,
+
     updateTheme,
     updateDesktopLayout,
     updateDisplayName,
@@ -141,6 +155,8 @@ export const useSettings = (userId) => {
     updateNotifications,
     updateAnimationsEnabled,
     updateDefaultFileView,
+    updateShowTipsWidget,
+
     isLoading
   };
 };

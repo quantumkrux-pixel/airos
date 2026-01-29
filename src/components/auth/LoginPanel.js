@@ -30,7 +30,7 @@ const LoginPanel = ({ onLogin, onRegister, loginMode, setLoginMode }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(#0b5394 100%)'
+      background: 'linear-gradient(#90bd97 100%)'
     }}>
       <div style={{
         background: 'rgba(255, 255, 255, 0.95)',

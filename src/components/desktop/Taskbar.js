@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, User, MessageSquare, LogOut } from 'lucide-react';
+import { Menu, User, MessageSquare, Calendar, LogOut } from 'lucide-react';
 import { appRegistry } from '../../utils/appRegistry';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import AOSLogo from './AOSLogo.png';
 
 const Taskbar = ({
   windows,
@@ -75,10 +74,11 @@ const Taskbar = ({
 
   return (
     <div style={containerStyle}>
+
       {/* Left: Menu Button */}
       <button onClick={onToggleAppMenu} style={isMobile ? mobileIcon : iconButton}>
         <img
-          src={AOSLogo}
+          src="/logo512.png"
           alt="AirOS Logo"
           style={{
             width: isMobile ? 40 : 64,
@@ -121,11 +121,11 @@ const Taskbar = ({
         </div>
       )}
 
-      {/* Right: User Info, AirChat, Logout */}
+      {/* Right: User Info, Breeze, Logout */}
       {!isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
           <button
-            onClick={() => onLaunchApp('chat')}
+            onClick={() => onLaunchApp('Breeze')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -139,44 +139,64 @@ const Taskbar = ({
               cursor: 'pointer',
               transition: 'all 0.2s'
             }}>
-           <MessageSquare size={24} color="white" />
+            <MessageSquare size={24} color="white" />
           </button>
 
-          <div
-            style={{
-              color: 'white',
-              fontSize: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 12px',
-              background: 'rgba(255, 255, 255, 0.1)',
-              borderRadius: '6px'
-            }}
-          >
-            <User size={16} />
-            <span>{currentUser?.email}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+            <button
+              onClick={() => onLaunchApp('Calendar')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                background: 'rgba(100, 100, 70, 0.8)',
+                color: 'white',
+                borderRadius: '6px',
+                fontSize: '16px',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}>
+              <Calendar size={24} color="white" />
+            </button>
+
+            <div
+              style={{
+                color: 'white',
+                fontSize: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px'
+              }}
+            >
+              <User size={16} />
+              <span>{currentUser?.email}</span>
+            </div>
+
+            <button
+              onClick={onLogout}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                background: 'rgba(100, 100, 70, 0.8)',
+                color: 'white',
+                borderRadius: '6px',
+                fontSize: '16px',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              <LogOut size={18} />
+              Logout
+            </button>
           </div>
-
-          <button
-            onClick={onLogout}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 12px',
-              background: 'rgba(100, 100, 70, 0.8)',
-              color: 'white',
-              borderRadius: '6px',
-              fontSize: '16px',
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            <LogOut size={18} />
-            Logout
-          </button>
         </div>
       )}
 
@@ -186,6 +206,7 @@ const Taskbar = ({
           <LogOut size={28} color="white" />
         </div>
       )}
+
     </div>
   );
 };

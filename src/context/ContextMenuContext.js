@@ -1,6 +1,35 @@
 import { createContext, useContext, useState } from "react";
+import { SearchPaletteController } from "../controllers/SearchPaletteController";
 
 const ContextMenuContext = createContext();
+
+// Global provider registry
+const providers = new Set();
+
+// Allow modules to register context menu providers
+export const registerContextMenuProvider = (fn) => {
+  providers.add(fn);
+  return () => providers.delete(fn);
+};
+
+// Resolve actions based on click context
+const resolveActions = (context) => {
+  let actions = [];
+
+  // Collect actions from all registered providers
+  providers.forEach((provider) => {
+    const result = provider(context);
+    if (Array.isArray(result)) actions.push(...result);
+  });
+
+  // Always include universal search
+  actions.unshift({
+    label: "Open URL / Search…",
+    action: () => SearchPaletteController.show()
+  });
+
+  return actions;
+};
 
 export const ContextMenuProvider = ({ children }) => {
   const [menu, setMenu] = useState({
@@ -11,24 +40,28 @@ export const ContextMenuProvider = ({ children }) => {
     payload: null
   });
 
-  const openContextMenu = (event, config) => {
+  const openContextMenu = (event, context = {}) => {
     event.preventDefault();
+
+    const actions = resolveActions(context);
 
     setMenu({
       visible: true,
       x: event.clientX,
       y: event.clientY,
-      actions: config.actions,
-      payload: config.payload || null
+      actions,
+      payload: context
     });
   };
 
   const closeContextMenu = () => {
-    setMenu(prev => ({ ...prev, visible: false }));
+    setMenu((prev) => ({ ...prev, visible: false }));
   };
 
   return (
-    <ContextMenuContext.Provider value={{ menu, openContextMenu, closeContextMenu }}>
+    <ContextMenuContext.Provider
+      value={{ menu, openContextMenu, closeContextMenu }}
+    >
       {children}
     </ContextMenuContext.Provider>
   );

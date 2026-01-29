@@ -11,6 +11,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useContextMenu } from '../../../context/ContextMenuContext';
+import JunkDrawer from '../JunkDrawer/JunkDrawer';
+
 
 const FileManager = ({
   fileSystem,
@@ -29,6 +31,7 @@ const FileManager = ({
   const [uploadStatus, setUploadStatus] = useState(''); // Status message
   const [uploadError, setUploadError] = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null); // for preview
+  const [moveToTrash] = useState(false);
   
   const fileInputRef = useRef(null);
   const { openContextMenu } = useContextMenu();
@@ -277,19 +280,14 @@ const FileManager = ({
             }
           }
         },
-        {
-          label: 'Delete',
-          onClick: async () => {
-            const confirmed = window.confirm(
-              `Are you sure you want to delete "${entry.name}"?`
-            );
-            if (!confirmed) return;
-
-            try {
-              await deleteFile(entry.path);
-              await reloadFileSystem();
-            } catch (error) {
-              alert(`Failed to delete: ${error.message}`);
+{
+  label: 'Delete',
+  onClick: async () => {
+    try {
+      await moveToTrash(entry.path, fileSystem, saveFile, deleteFile, createDirectory, reloadFileSystem);
+      await reloadFileSystem();
+    } catch (error) {
+      alert(`Failed to move to trash: ${error.message}`);
             }
           }
         },
@@ -356,7 +354,7 @@ const FileManager = ({
           Locations
         </h3>
 
-        {['/', '/Documents', '/Pictures', '/Videos', '/Desktop', '/Projects', '/Dev', '/App'].map(
+        {['/', '/Documents', '/Pictures', '/Videos', '/Desktop', '/Projects', '/Dev', '/App', '/.trash'].map(
           (path) => (
             <div
               key={path}

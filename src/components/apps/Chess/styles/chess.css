@@ -1,0 +1,105 @@
+.chess-container {
+  display: flex;
+  gap: 12px;
+}
+
+.chess-board {
+  display: grid;
+  align-items: center;
+  grid-template-columns: repeat(8, 64px);
+  grid-template-rows: repeat(8, 64px);
+  border: 2px solid #333;
+  background: #FFD48C;
+  margin-left: 30px;
+  margin-top: 15px;
+}
+
+.square {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.square.light {
+  background: #eeeed2;
+}
+
+.square.dark {
+  background: #A67D37;
+}
+
+.square.selected {
+  outline: 3px solid orange;
+}
+
+.square.legal {
+  outline: 3px solid rgba(0, 255, 0, 0.6);
+}
+
+.piece {
+  pointer-events: none;
+}
+.chess-sidebar {
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px;
+  background: #1e1e1e;
+  color: #eee;
+  border-left: 2px solid #333;
+  font-family: sans-serif;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 12px;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.value {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.history-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.history-item {
+  padding: 2px 0;
+  font-size: 14px;
+}
+
+.empty {
+  opacity: 0.5;
+  font-size: 14px;
+}
+
+.restart-btn {
+  padding: 8px;
+  background: #444;
+  border: 1px solid #666;
+  color: #eee;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.restart-btn:hover {
+  background: #555;
+}
