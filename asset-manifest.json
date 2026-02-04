@@ -1,16 +1,16 @@
 {
   "files": {
     "main.css": "/static/css/main.8ae510b3.css",
-    "main.js": "/static/js/main.ca9e579c.js",
+    "main.js": "/static/js/main.55ded86e.js",
     "static/js/453.eadda7e2.chunk.js": "/static/js/453.eadda7e2.chunk.js",
     "static/media/reellogo.png": "/static/media/reellogo.2cbfcb2824e739c2d3b4.png",
     "index.html": "/index.html",
     "main.8ae510b3.css.map": "/static/css/main.8ae510b3.css.map",
-    "main.ca9e579c.js.map": "/static/js/main.ca9e579c.js.map",
+    "main.55ded86e.js.map": "/static/js/main.55ded86e.js.map",
     "453.eadda7e2.chunk.js.map": "/static/js/453.eadda7e2.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.8ae510b3.css",
-    "static/js/main.ca9e579c.js"
+    "static/js/main.55ded86e.js"
   ]
 }
